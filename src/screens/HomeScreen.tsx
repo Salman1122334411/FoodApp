@@ -2,145 +2,144 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
-  FlatList,
-  Image,
-  TouchableOpacity,
+  ScrollView,
   StyleSheet,
+  TouchableOpacity,
+  Image,
   ActivityIndicator,
-  RefreshControl,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
-import { Restaurant } from '../lib/supabase';
-import { Ionicons } from '@expo/vector-icons';
-import { useCart } from '../hooks/useCart';
+import { Session } from '@supabase/supabase-js';
+import { useNavigation } from '@react-navigation/native'; // Add this import
 
-export const HomeScreen = ({ navigation }: { navigation: any }) => {
-  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+const CATEGORIES = [
+  { id: '1', name: 'All', icon: '🍽️' },
+  { id: '2', name: 'Pizza', icon: '🍕' },
+  { id: '3', name: 'Burger', icon: '🍔' },
+  { id: '4', name: 'Sushi', icon: '🍱' },
+  { id: '5', name: 'Dessert', icon: '🍰' },
+];
+
+export function HomeScreen() {
+  const navigation = useNavigation(); // Initialize navigation
+  const [restaurants, setRestaurants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const { cartItems } = useCart();
-
-  const fetchRestaurants = async () => {
-    try {
-      console.log('Fetching restaurants...');
-      const { data, error } = await supabase
-        .from('Restaurant')
-        .select('*')
-        .order('rating', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching restaurants:', error.message);
-        setError('Error fetching restaurants: ' + error.message);
-        return;
-      }
-
-      console.log('Fetched restaurants:', data?.length || 0);
-      if (data) {
-        setRestaurants(data);
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error('Error:', errorMessage);
-      setError('Unexpected error: ' + errorMessage);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  const [userName, setUserName] = useState<string | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchUserProfile(session.user.id);
+    });
     fetchRestaurants();
   }, []);
 
-  const onRefresh = React.useCallback(() => {
-    setRefreshing(true);
-    fetchRestaurants();
-  }, []);
+  const fetchUserProfile = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', userId)
+      .single();
 
-  const renderRestaurantItem = ({ item }: { item: Restaurant }) => (
-    <TouchableOpacity 
-      style={styles.restaurantCard}
-      onPress={() => navigation.navigate('RestaurantDetails', { restaurant: item })}
-    >
-      <Image
-        source={{ uri: item.coverImage }}
-        style={styles.restaurantImage}
-        defaultSource={{ uri: item.coverImage }}
-      />
-      <View style={styles.restaurantInfo}>
-        <Text style={styles.restaurantName}>{item.name}</Text>
-        <Text style={styles.cuisineType}>
-          {item.chainName} • {item.cuisineType}
-        </Text>
-        <View style={styles.restaurantMeta}>
-          <Text style={styles.metaText}>⭐ {item.rating}</Text>
-          <Text style={styles.metaText}>🕒 {item.deliveryTime}</Text>
-          <Text style={styles.metaText}>💰 {item.minimumOrder}</Text>
-        </View>
-        <Text style={styles.address}>{item.address}</Text>
-      </View>
-    </TouchableOpacity>
-  );
+    if (error) console.error('Error fetching user:', error.message);
+    else setUserName(data?.full_name || 'User');
+  };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FF4B2B" />
-        <Text style={styles.loadingText}>Loading restaurants...</Text>
-      </View>
-    );
-  }
+  const fetchRestaurants = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('Restaurant')
+      .select(`
+        id, 
+        name, 
+        chainName, 
+        address, 
+        latitude, 
+        longitude, 
+        cuisineType, 
+        segment, 
+        city, 
+        area, 
+        rating, 
+        coverImage, 
+        deliveryTime, 
+        minimumOrder,
+        menuItems: MenuItem (*) // Include menuItems via foreign table
+      `)
+      .order('rating', { ascending: false });
 
-  if (error) {
-    return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>Error: {error}</Text>
-        <TouchableOpacity 
-          style={styles.retryButton} 
-          onPress={() => {
-            setError(null);
-            setLoading(true);
-            fetchRestaurants();
-          }}
-        >
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+    if (error) console.error('Error fetching restaurants:', error.message);
+    else setRestaurants(data || []);
+    setLoading(false);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Restaurants</Text>
-        {cartItems.length > 0 && (
-          <TouchableOpacity 
-            style={styles.cartButton}
-            onPress={() => navigation.navigate('Cart')}
-          >
-            <Ionicons name="cart" size={24} color="#FF4B2B" />
-            <View style={styles.cartBadge}>
-              <Text style={styles.cartBadgeText}>
-                {cartItems.reduce((sum, item) => sum + item.quantity, 0)}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        )}
-      </View>
-      <FlatList
-        data={restaurants}
-        renderItem={renderRestaurantItem}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.listContainer}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      />
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greeting}>Hello, {userName || 'User'}!</Text>
+            <Text style={styles.deliveryAddress}>
+              Delivery to Current Location
+            </Text>
+          </View>
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categories}
+        >
+          {CATEGORIES.map((category) => (
+            <TouchableOpacity key={category.id} style={styles.categoryItem}>
+              <Text style={styles.categoryIcon}>{category.icon}</Text>
+              <Text style={styles.categoryName}>{category.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Featured Restaurants</Text>
+          {loading ? (
+            <ActivityIndicator size="large" color="#1F2937" />
+          ) : restaurants.length > 0 ? (
+            restaurants.map((restaurant) => (
+              <TouchableOpacity
+                key={restaurant.id}
+                style={styles.restaurantCard}
+                onPress={() => 
+                  navigation.navigate('RestaurantDetails', { restaurant }) // Add onPress
+                }
+              >
+                <Image
+                  source={{ uri: restaurant.coverImage }}
+                  style={styles.restaurantImage}
+                />
+                <View style={styles.restaurantInfo}>
+                  <Text style={styles.restaurantName}>{restaurant.name}</Text>
+                  <Text style={styles.restaurantCuisine}>
+                    {restaurant.cuisineType} • {restaurant.segment}
+                  </Text>
+                  <View style={styles.restaurantMeta}>
+                    <Text style={styles.metaItem}>⭐ {restaurant.rating}</Text>
+                    <Text style={styles.metaItem}>🕒 {restaurant.deliveryTime} min</Text>
+                    <Text style={styles.metaItem}>💰 {restaurant.minimumOrder}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <Text style={styles.noDataText}>No restaurants available</Text>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
-};
+}
+
+// ... (keep the styles unchanged from previous answer)
 
 const styles = StyleSheet.create({
   container: {
@@ -148,84 +147,48 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     padding: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
   },
-  headerTitle: {
+  greeting: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#1F2937',
   },
-  cartButton: {
-    padding: 8,
-    position: 'relative',
-  },
-  cartBadge: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    backgroundColor: '#FF4B2B',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cartBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
+  deliveryAddress: {
     fontSize: 16,
-    color: '#666',
+    color: '#6B7280',
+    marginTop: 4,
   },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#FF4B2B',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  retryButton: {
-    backgroundColor: '#FF4B2B',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  listContainer: {
+  categories: {
     padding: 16,
+  },
+  categoryItem: {
+    alignItems: 'center',
+    marginRight: 24,
+  },
+  categoryIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  categoryName: {
+    fontSize: 14,
+    color: '#4B5563',
+  },
+  section: {
+    padding: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 16,
   },
   restaurantCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
     marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
@@ -235,35 +198,32 @@ const styles = StyleSheet.create({
     height: 200,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
-    backgroundColor: '#F3F4F6',
   },
   restaurantInfo: {
-    padding: 16,
+    padding: 12,
   },
   restaurantName: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1F2937',
-    marginBottom: 4,
   },
-  cuisineType: {
+  restaurantCuisine: {
     fontSize: 14,
     color: '#6B7280',
-    marginBottom: 8,
+    marginTop: 4,
   },
   restaurantMeta: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 8,
+    marginTop: 8,
   },
-  metaText: {
+  metaItem: {
     fontSize: 14,
     color: '#4B5563',
+    marginRight: 16,
   },
-  address: {
-    fontSize: 14,
+  noDataText: {
+    textAlign: 'center',
+    fontSize: 16,
     color: '#6B7280',
-    fontStyle: 'italic',
   },
 });

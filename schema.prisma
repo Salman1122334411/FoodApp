@@ -1,43 +1,66 @@
 generator client {
   provider = "prisma-client-js"
 }
-
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
-
-model User {
-  id          String    @id @default(cuid())
-  email       String    @unique
-  full_name   String?
-  phone_number String?
-  avatar_url  String?
-  addresses   Address[]
-  orders      Order[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+enum UserRole {
+  CUSTOMER
+  DRIVER
+  VENDOR
+  ADMIN
+  SUPER_ADMIN
 }
-
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+model User {
+  id             String         @id @default(cuid())
+  email          String         @unique
+  name           String?
+  role           UserRole       @default(CUSTOMER)
+  approvalStatus ApprovalStatus? // For DRIVER and VENDOR roles
+  addresses      Address[]
+  orders         Order[]
+  driver         Driver?
+  vendorProfile  VendorProfile?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+model VendorProfile {
+  id           String       @id @default(cuid())
+  userId       String       @unique
+  user         User         @relation(fields: [userId], references: [id])
+  businessName String
+  restaurants  Restaurant[]
+  documents    Json?
+  approvedAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
 model Address {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  street      String
-  city        String
-  state       String
-  postal_code String
-  is_default  Boolean  @default(false)
-  orders      Order[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  id            String    @id @default(cuid())
+  userId        String
+  label         String    @default("Home")
+  streetAddress String
+  city          String
+  state         String
+  zipCode       String
+  phoneNumber   String
+  latitude      Float?
+  longitude     Float?
+  isDefault     Boolean   @default(false)
+  user          User      @relation(fields: [userId], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   @@index([userId])
 }
-
 model Restaurant {
-  id           String     @id @default(cuid())
+  id           String        @id @default(cuid())
   name         String
   chainName    String
   address      String
@@ -55,10 +78,13 @@ model Restaurant {
   closedDate   DateTime?
   menuItems    MenuItem[]
   orders       Order[]
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  vendorId     String
+  vendor       VendorProfile @relation(fields: [vendorId], references: [id])
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  @@index([vendorId])
 }
-
 model MenuItem {
   id           String      @id @default(cuid())
   label        String
@@ -71,29 +97,74 @@ model MenuItem {
   orderItems   OrderItem[]
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
-
-  @@index([restaurantId])
 }
-
+model Driver {
+  id            String           @id @default(cuid())
+  userId        String           @unique
+  user          User             @relation(fields: [userId], references: [id])
+  status        String           @default("OFFLINE")
+  currentLat    Float?
+  currentLng    Float?
+  lastLocation  DateTime?
+  activeOrder   Order?           @relation("ActiveDelivery", fields: [activeOrderId], references: [id])
+  activeOrderId String?         @unique
+  orders        Order[]          @relation("DriverOrders")
+  locations     DriverLocation[]
+  stats         DriverStats?
+  rating        Float?
+  totalOrders   Int              @default(0)
+  vehicleType   String
+  documents     Json?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+model DriverLocation {
+  id        String   @id @default(cuid())
+  driverId  String
+  driver    Driver   @relation(fields: [driverId], references: [id])
+  lat       Float
+  lng       Float
+  timestamp DateTime @default(now())
+  @@index([driverId, timestamp])
+}
+model DriverStats {
+  id              String    @id @default(cuid())
+  driverId        String    @unique
+  driver          Driver    @relation(fields: [driverId], references: [id])
+  totalDeliveries Int       @default(0)
+  totalEarnings   Float     @default(0)
+  averageRating   Float?
+  completionRate  Float     @default(0)
+  lastPayout      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
 model Order {
-  id           String      @id @default(cuid())
-  userId       String
-  user         User        @relation(fields: [userId], references: [id])
-  restaurantId String
-  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id])
-  addressId    String
-  address      Address     @relation(fields: [addressId], references: [id])
-  status       OrderStatus @default(PENDING)
-  totalAmount  Float
-  items        OrderItem[]
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-
-  @@index([userId])
-  @@index([restaurantId])
-  @@index([addressId])
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id])
+  restaurantId    String
+  restaurant      Restaurant  @relation(fields: [restaurantId], references: [id])
+  status          String      @default("PENDING")
+  totalAmount     Float
+  deliveryAddress String
+  orderItems      OrderItem[]
+  driverId        String?
+  driver          Driver?     @relation("DriverOrders", fields: [driverId], references: [id])
+  assignedDriver  Driver?     @relation("ActiveDelivery")
+  pickupLat       Float?
+  pickupLng       Float?
+  dropoffLat      Float?
+  dropoffLng      Float?
+  assignedAt      DateTime?
+  pickedUpAt      DateTime?
+  deliveredAt     DateTime?
+  estimatedTime   Int?
+  actualTime      Int?
+  driverRating    Int?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 }
-
 model OrderItem {
   id         String   @id @default(cuid())
   orderId    String
@@ -106,16 +177,4 @@ model OrderItem {
   name       String
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-
-  @@index([orderId])
-  @@index([menuItemId])
-}
-
-enum OrderStatus {
-  PENDING
-  CONFIRMED
-  PREPARING
-  READY
-  DELIVERED
-  CANCELLED
 }

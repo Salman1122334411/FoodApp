@@ -162,7 +162,11 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
   }
 
   return (
+    
     <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Orders Status</Text>
+      </View>
       <FlatList
         data={orders}
         renderItem={renderOrderItem}
@@ -199,12 +203,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   listContainer: {
-    padding: 16,
+    padding: 10,
+    paddingTop: 0,
   },
   orderCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 16,
+    padding: 20,
     marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: {
@@ -294,5 +299,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  header: {
+    paddingTop: 40,
+    paddingHorizontal: 16,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 16,
   },
 });
