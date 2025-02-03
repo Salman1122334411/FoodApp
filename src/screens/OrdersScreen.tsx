@@ -13,7 +13,7 @@ import { supabase } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 
 interface OrderItem {
-  itemId: string;
+  id: string;
   name: string;
   price: number;
   quantity: number;
@@ -21,14 +21,22 @@ interface OrderItem {
 
 interface Order {
   id: string;
-  user_id: string;
-  restaurant_id: string;
-  restaurant_name: string;
-  items: OrderItem[];
-  total_amount: number;
-  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
-  address_id: string;
-  created_at: string;
+  userId: string;
+  restaurantId: string;
+  status: 'PENDING' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'DELIVERED' | 'CANCELLED';
+  totalAmount: number;
+  deliveryAddress: string;
+  driverId: string | null;
+  assignedDriver: string | null;
+  assignedAt: string | null;
+  pickedUpAt: string | null;
+  deliveredAt: string | null;
+  estimatedTime: number | null;
+  actualTime: number | null;
+  driverRating: number | null;
+  createdAt: string;
+  updatedAt: string;
+  orderItems: OrderItem[];
 }
 
 export function OrdersScreen({ navigation }: { navigation: any }) {
@@ -41,14 +49,32 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No user found');
 
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      const { data: orders, error } = await supabase
+        .from('Order')
+        .select(`
+          id,
+          userId,
+          restaurantId,
+          status,
+          totalAmount,
+          deliveryAddress,
+          driverId,
+          assignedDriver,
+          assignedAt,
+          pickedUpAt,
+          deliveredAt,
+          estimatedTime,
+          actualTime,
+          driverRating,
+          createdAt,
+          updatedAt,
+          OrderItem (id, name, quantity, price)
+        `)
+        .eq('userId', user.id)
+        .order('createdAt', { ascending: false });
 
       if (error) throw error;
-      setOrders(data || []);
+      setOrders(orders || []);
     } catch (error) {
       console.error('Error fetching orders:', error);
       Alert.alert('Error', 'Failed to load orders');
@@ -69,39 +95,25 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
 
   const getStatusColor = (status: Order['status']) => {
     switch (status) {
-      case 'pending':
-        return '#FCD34D';
-      case 'confirmed':
-        return '#60A5FA';
-      case 'preparing':
-        return '#818CF8';
-      case 'ready':
-        return '#34D399';
-      case 'delivered':
-        return '#10B981';
-      case 'cancelled':
-        return '#EF4444';
-      default:
-        return '#6B7280';
+      case 'PENDING': return '#FCD34D';
+      case 'CONFIRMED': return '#60A5FA';
+      case 'PREPARING': return '#818CF8';
+      case 'READY': return '#34D399';
+      case 'DELIVERED': return '#10B981';
+      case 'CANCELLED': return '#EF4444';
+      default: return '#6B7280';
     }
   };
 
   const getStatusIcon = (status: Order['status']) => {
     switch (status) {
-      case 'pending':
-        return 'time-outline';
-      case 'confirmed':
-        return 'checkmark-circle-outline';
-      case 'preparing':
-        return 'restaurant-outline';
-      case 'ready':
-        return 'bicycle-outline';
-      case 'delivered':
-        return 'checkmark-done-circle-outline';
-      case 'cancelled':
-        return 'close-circle-outline';
-      default:
-        return 'help-circle-outline';
+      case 'PENDING': return 'time-outline';
+      case 'CONFIRMED': return 'checkmark-circle-outline';
+      case 'PREPARING': return 'restaurant-outline';
+      case 'READY': return 'bicycle-outline';
+      case 'DELIVERED': return 'checkmark-done-circle-outline';
+      case 'CANCELLED': return 'close-circle-outline';
+      default: return 'help-circle-outline';
     }
   };
 
@@ -123,8 +135,8 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
     >
       <View style={styles.orderHeader}>
         <View>
-          <Text style={styles.restaurantName}>{item.restaurant_name}</Text>
-          <Text style={styles.orderDate}>{formatDate(item.created_at)}</Text>
+          <Text style={styles.restaurantName}>{item.restaurantId}</Text> {/* Replace with actual restaurant name */}
+          <Text style={styles.orderDate}>{formatDate(item.createdAt)}</Text>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
           <Ionicons name={getStatusIcon(item.status)} size={16} color="#fff" />
@@ -135,20 +147,18 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
       </View>
 
       <View style={styles.orderItems}>
-        {item.items.map((orderItem, index) => (
+        {item.orderItems?.map((orderItem, index) => (
           <Text key={index} style={styles.orderItemText}>
-            {orderItem.quantity}x {orderItem.name}
+            {orderItem.quantity}x {orderItem.name} (${orderItem.price.toFixed(2)})
           </Text>
         ))}
       </View>
 
       <View style={styles.orderFooter}>
         <Text style={styles.totalItems}>
-          {item.items.reduce((sum, item) => sum + item.quantity, 0)} items
+          {item.orderItems.reduce((sum, orderItem) => sum + orderItem.quantity, 0)} items
         </Text>
-        <Text style={styles.totalAmount}>
-          ${item.total_amount.toFixed(2)}
-        </Text>
+        <Text style={styles.totalAmount}>${item.totalAmount.toFixed(2)}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -162,7 +172,6 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
   }
 
   return (
-    
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Orders Status</Text>

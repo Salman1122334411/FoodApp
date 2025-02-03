@@ -42,7 +42,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
       if (!user) throw new Error('No user found');
 
       const { data, error } = await supabase
-        .from('addresses')
+        .from('Addresses')
         .select('*')
         .eq('user_id', user.id)
         .order('is_default', { ascending: false });
@@ -68,7 +68,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
       let deliveryAddress = selectedAddress;
       if (useNewAddress) {
         const { data: addressData, error: addressError } = await supabase
-          .from('addresses')
+          .from('Addresses')
           .insert([{ ...newAddress, user_id: user.id }])
           .select()
           .single();
@@ -83,49 +83,60 @@ export function CartScreen({ navigation }: { navigation: any }) {
       }
 
       // Group items by restaurant
-      const restaurantOrders = cartItems.reduce((acc, item) => {
-        if (!acc[item.restaurantId]) {
-          acc[item.restaurantId] = {
+      const restaurantGroups = cartItems.reduce((acc, item) => {
+        const key = item.restaurantId;
+        if (!acc[key]) {
+          acc[key] = {
             restaurantId: item.restaurantId,
-            restaurantName: item.restaurantName,
             items: [],
             total: 0,
           };
         }
-        acc[item.restaurantId].items.push({
-          itemId: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-        });
-        acc[item.restaurantId].total += item.price * item.quantity;
+        acc[key].items.push(item);
+        acc[key].total += item.price * item.quantity;
         return acc;
       }, {} as Record<string, any>);
-
-      // Create order for each restaurant
-      for (const restaurantId in restaurantOrders) {
-        const order = restaurantOrders[restaurantId];
-        const { error: orderError } = await supabase
-          .from('orders')
+  
+      // Create orders and order items
+      for (const restaurantId of Object.keys(restaurantGroups)) {
+        const group = restaurantGroups[restaurantId];
+        
+        // Create order
+        const { data: orderData, error: orderError } = await supabase
+          .from('Order')
           .insert([{
-            user_id: user.id,
-            restaurant_id: restaurantId,
-            restaurant_name: order.restaurantName,
-            items: order.items,
-            total_amount: order.total,
+            userId: user.id,
+            restaurantId: restaurantId,
             status: 'PENDING',
-            address_id: deliveryAddress.id,
-            created_at: new Date().toISOString(),
-          }]);
-
+            totalAmount: group.total,
+            deliveryAddress: deliveryAddress,
+          }])
+          .select('id')
+          .single();
+  
         if (orderError) throw orderError;
+  
+        // Create order items
+        const orderItems = group.items.map((item: any) => ({
+          orderid: orderData.id,
+          menuitemid: item.id,
+          quantity: item.quantity,
+          price: item.price,
+          name: item.name,
+        }));
+  
+        const { error: itemsError } = await supabase
+          .from('OrderItem')
+          .insert(orderItems);
+  
+        if (itemsError) throw itemsError;
       }
-
+  
       clearCart();
       navigation.navigate('Orders');
-      Alert.alert('Success', 'Orders placed successfully!');
+      Alert.alert('Success', 'Order placed successfully!');
     } catch (error) {
-      console.error('Error placing order:', error.stack);
+      console.error('Error placing order:', error);
       Alert.alert('Error', 'Failed to place order');
     } finally {
       setLoading(false);
