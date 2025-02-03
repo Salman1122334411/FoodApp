@@ -17,8 +17,8 @@ import * as ImagePicker from 'expo-image-picker';
 
 interface UserProfile {
   id: string;
-  full_name: string;
-  phone_number: string;
+  name: string;
+  phoneNumber: string;
   avatar_url?: string;
 }
 
@@ -49,8 +49,8 @@ export function EditProfileScreen() {
       if (error) throw error;
 
       setProfile(data);
-      setFullName(data.full_name || '');
-      setPhoneNumber(data.phone_number || '');
+      setFullName(data.name || '');
+      setPhoneNumber(data.phoneNumber || '');
       setAvatarUri(data.avatar_url || null);
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -145,8 +145,8 @@ export function EditProfileScreen() {
 
       const updates = {
         id: user.id,
-        full_name: fullName,
-        phone_number: phoneNumber,
+        name: fullName,
+        phoneNumber: phoneNumber,
         avatar_url: avatarUri, // Update avatar URL in the profile
         updated_at: new Date().toISOString(),
       };

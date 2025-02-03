@@ -17,22 +17,21 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 interface Address {
   id: string;
   user_id: string;
-  street: string;
+  street_address: string;
   city: string;
   state: string;
-  postal_code: string;
+  zip_code: string;
+  phone_number: string;
   is_default: boolean;
 }
 
 interface UserProfile {
   id: string;
   email: string;
-  full_name: string;
+  name: string;
   phone_number: string;
   avatar_url?: string;
 }
-
-
 
 export function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -41,8 +40,6 @@ export function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation();
 
-
-  
   const fetchProfile = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -58,7 +55,7 @@ export function ProfileScreen() {
       setProfile(profileData);
 
       const { data: addressData, error: addressError } = await supabase
-        .from('addresses')
+        .from('Addresses')
         .select('*')
         .eq('user_id', user.id)
         .order('is_default', { ascending: false });
@@ -107,13 +104,13 @@ export function ProfileScreen() {
 
       // First, remove default from all addresses
       await supabase
-        .from('addresses')
+        .from('Addresses')
         .update({ is_default: false })
         .eq('user_id', user.id);
 
       // Set the selected address as default
       const { error } = await supabase
-        .from('addresses')
+        .from('Addresses')
         .update({ is_default: true })
         .eq('id', addressId);
 
@@ -131,7 +128,7 @@ export function ProfileScreen() {
   const deleteAddress = async (addressId: string) => {
     try {
       const { error } = await supabase
-        .from('addresses')
+        .from('Addresses')
         .delete()
         .eq('id', addressId);
 
@@ -173,7 +170,7 @@ export function ProfileScreen() {
             </View>
           )}
         </View>
-        <Text style={styles.name}>{profile?.full_name || 'User'}</Text>
+        <Text style={styles.name}>{profile?.name || 'User'}</Text>
         <Text style={styles.email}>{profile?.email}</Text>
       </View>
 
@@ -226,11 +223,11 @@ export function ProfileScreen() {
                   color={address.is_default ? "#FF4B2B" : "#6B7280"} 
                 />
                 <Text style={styles.addressText}>
-                  {address.street}, {address.city}
+                  {address.street_address}, {address.city}
                 </Text>
               </View>
               <Text style={styles.addressSubtext}>
-                {address.state}, {address.postal_code}
+                {address.state}, {address.zip_code}
               </Text>
             </View>
             
@@ -295,7 +292,6 @@ export function ProfileScreen() {
       </TouchableOpacity>
     </ScrollView>
   );
- 
 }
 
 const styles = StyleSheet.create({

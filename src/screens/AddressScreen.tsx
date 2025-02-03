@@ -15,11 +15,14 @@ import { Ionicons } from '@expo/vector-icons';
 interface Address {
   id: string;
   user_id: string;
-  address_line1: string;
-  address_line2?: string; //optional address
+  label: string;
+  street_address: string;
   city: string;
   state: string;
-  postal_code: string;
+  zip_code: string;
+  phone_number: string;
+  latitude?: number;
+  longitude?: number;
   is_default: boolean;
 }
 
@@ -72,15 +75,15 @@ export function AddressScreen() {
         <View style={styles.form}>
           <TextInput
             style={styles.input}
-            value={newAddress.address_line1}
-            onChangeText={(text) => setNewAddress({ ...newAddress, address_line1: text })}
-            placeholder="Address Line 1"
+            value={newAddress.label}
+            onChangeText={(text) => setNewAddress({ ...newAddress, label: text })}
+            placeholder="Label (e.g., Home)"
           />
           <TextInput
             style={styles.input}
-            value={newAddress.address_line2}
-            onChangeText={(text) => setNewAddress({ ...newAddress, address_line2: text })}
-            placeholder="Address Line 2 (Optional)"
+            value={newAddress.street_address}
+            onChangeText={(text) => setNewAddress({ ...newAddress, street_address: text })}
+            placeholder="Street Address"
           />
           <TextInput
             style={styles.input}
@@ -96,10 +99,17 @@ export function AddressScreen() {
           />
           <TextInput
             style={styles.input}
-            value={newAddress.postal_code}
-            onChangeText={(text) => setNewAddress({ ...newAddress, postal_code: text })}
-            placeholder="Postal Code"
+            value={newAddress.zip_code}
+            onChangeText={(text) => setNewAddress({ ...newAddress, zip_code: text })}
+            placeholder="Zip Code"
             keyboardType="numeric"
+          />
+          <TextInput
+            style={styles.input}
+            value={newAddress.phone_number}
+            onChangeText={(text) => setNewAddress({ ...newAddress, phone_number: text })}
+            placeholder="Phone Number"
+            keyboardType="phone-pad"
           />
           <TouchableOpacity style={styles.button} onPress={handleAddAddress}>
             <Text style={styles.buttonText}>Add Address</Text>
@@ -111,12 +121,9 @@ export function AddressScreen() {
         <View key={address.id} style={styles.addressCard}>
           <View style={styles.addressInfo}>
             <Text style={styles.addressText}>
-              {address.address_line1}
-              {address.address_line2 ? `, ${address.address_line2}` : ''}
+              {address.street_address}, {address.city}, {address.state} {address.zip_code}
             </Text>
-            <Text style={styles.addressText}>
-              {address.city}, {address.state} {address.postal_code}
-            </Text>
+            <Text style={styles.addressText}>Phone: {address.phone_number}</Text>
             {address.is_default && (
               <Text style={styles.defaultBadge}>Default</Text>
             )}
@@ -142,7 +149,6 @@ export function AddressScreen() {
     </ScrollView>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {

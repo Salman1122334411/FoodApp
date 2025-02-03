@@ -39,12 +39,12 @@ export function HomeScreen() {
   const fetchUserProfile = async (userId: string) => {
     const { data, error } = await supabase
       .from('profiles')
-      .select('full_name')
+      .select('name')
       .eq('id', userId)
       .single();
 
     if (error) console.error('Error fetching user:', error.message);
-    else setUserName(data?.full_name || 'User');
+    else setUserName(data?.name || 'User');
   };
 
   const fetchRestaurants = async () => {

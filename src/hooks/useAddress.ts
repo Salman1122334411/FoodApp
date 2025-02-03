@@ -4,12 +4,17 @@ import { supabase } from '../lib/supabase';
 interface Address {
   id: string;
   user_id: string;
-  address_line1: string;
-  address_line2?: string;
+  label: string;
+  street_address: string;
   city: string;
   state: string;
-  postal_code: string;
+  zip_code: string;
+  phone_number: string;
+  latitude?: number;
+  longitude?: number;
   is_default: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 interface AddressState {
@@ -31,7 +36,7 @@ export const useAddress = create<AddressState>((set) => ({
       if (!user) throw new Error('No user found');
 
       const { data, error } = await supabase
-        .from('addresses')
+        .from('Addresses')
         .select('*')
         .eq('user_id', user.id)
         .order('is_default', { ascending: false });
@@ -51,7 +56,7 @@ export const useAddress = create<AddressState>((set) => ({
       if (!user) throw new Error('No user found');
 
       const { data, error } = await supabase
-        .from('addresses')
+        .from('Addresses')
         .insert([{ ...newAddress, user_id: user.id }])
         .select()
         .single();
@@ -68,10 +73,10 @@ export const useAddress = create<AddressState>((set) => ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No user found');
 
-      await supabase.from('addresses').update({ is_default: false }).eq('user_id', user.id);
+      await supabase.from('Addresses').update({ is_default: false }).eq('user_id', user.id);
 
       const { error } = await supabase
-        .from('addresses')
+        .from('Addresses')
         .update({ is_default: true })
         .eq('id', addressId);
 
@@ -84,7 +89,7 @@ export const useAddress = create<AddressState>((set) => ({
   },
   deleteAddress: async (addressId) => {
     try {
-      const { error } = await supabase.from('addresses').delete().eq('id', addressId);
+      const { error } = await supabase.from('Addresses').delete().eq('id', addressId);
 
       if (error) throw error;
 
@@ -96,4 +101,3 @@ export const useAddress = create<AddressState>((set) => ({
     }
   },
 }));
- 
