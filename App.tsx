@@ -6,6 +6,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
+import { SplashScreenComponent } from './src/screens/SplashScreen';
+import React, { useEffect, useState } from 'react';
 
 // Import screens
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -74,9 +76,18 @@ function TabNavigator() {
 
 function NavigationContent() {
   const { user, loading } = useAuth();
+  const [splashVisible, setSplashVisible] = useState(true);
 
-  if (loading) {
-    return null;
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSplashVisible(false);
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (loading || splashVisible) {
+    return <SplashScreenComponent />;
   }
 
   return (
@@ -157,9 +168,7 @@ function NavigationContent() {
               headerBackTitle: 'Back',
             }}
           />
-
         </>
-        
       )}
     </Stack.Navigator>
   );
