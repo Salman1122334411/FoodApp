@@ -124,7 +124,7 @@ export function HomeScreen() {
                   </Text>
                   <View style={styles.restaurantMeta}>
                     <Text style={styles.metaItem}>⭐ {restaurant.rating}</Text>
-                    <Text style={styles.metaItem}>🕒 {restaurant.deliveryTime} min</Text>
+                    <Text style={styles.metaItem}>🕒 {restaurant.deliveryTime} </Text>
                     <Text style={styles.metaItem}>💰 {restaurant.minimumOrder}</Text>
                   </View>
                 </View>

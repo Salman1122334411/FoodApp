@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 
@@ -30,7 +31,6 @@ export const LoginScreen = ({ navigation }: { navigation: any }) => {
 
       if (error) throw error;
 
-      // Login successful
       console.log('Logged in user:', data.user);
     } catch (error: any) {
       Alert.alert('Error', error.message);
@@ -41,6 +41,11 @@ export const LoginScreen = ({ navigation }: { navigation: any }) => {
 
   return (
     <View style={styles.container}>
+      <Image
+        source={require('../../assets/splash.png')}
+        style={styles.logo}
+        resizeMode="contain"
+      />
       <Text style={styles.title}>Welcome Back!</Text>
       <TextInput
         style={styles.input}
@@ -83,6 +88,12 @@ const styles = StyleSheet.create({
     padding: 20,
     justifyContent: 'center',
     backgroundColor: '#fff',
+    alignItems: 'center',
+  },
+  logo: {
+    width: 150,
+    height: 150,
+    
   },
   title: {
     fontSize: 24,
@@ -96,12 +107,14 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 8,
     marginBottom: 15,
+    width: '100%',
   },
   button: {
     backgroundColor: '#FF6B6B',
     padding: 15,
     borderRadius: 8,
     marginBottom: 15,
+    width: '100%',
   },
   buttonDisabled: {
     backgroundColor: '#ffb5b5',

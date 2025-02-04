@@ -48,13 +48,13 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No user found');
-
+  
       const { data: orders, error } = await supabase
         .from('Order')
         .select(`
           id,
           userId,
-          restaurantId,
+          restaurant, 
           status,
           totalAmount,
           deliveryAddress,
@@ -68,13 +68,19 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
           driverRating,
           createdAt,
           updatedAt,
-          OrderItem (id, name, quantity, price)
+          orderItem
         `)
         .eq('userId', user.id)
         .order('createdAt', { ascending: false });
-
+  
       if (error) throw error;
-      setOrders(orders || []);
+  
+      setOrders(
+        orders.map((order) => ({
+          ...order,
+          orderItems: Array.isArray(order.orderItem) ? order.orderItem : [],
+        }))
+      );
     } catch (error) {
       console.error('Error fetching orders:', error);
       Alert.alert('Error', 'Failed to load orders');
@@ -83,6 +89,7 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
       setRefreshing(false);
     }
   };
+  
 
   useEffect(() => {
     fetchOrders();
@@ -135,8 +142,8 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
     >
       <View style={styles.orderHeader}>
         <View>
-          <Text style={styles.restaurantName}>{item.restaurantId}</Text> {/* Replace with actual restaurant name */}
-          <Text style={styles.orderDate}>{formatDate(item.createdAt)}</Text>
+        <Text style={styles.restaurantName}>{item.restaurant}</Text> 
+        <Text style={styles.orderDate}>{formatDate(item.createdAt)}</Text>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
           <Ionicons name={getStatusIcon(item.status)} size={16} color="#fff" />
@@ -146,13 +153,12 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
         </View>
       </View>
 
-      <View style={styles.orderItems}>
-        {item.orderItems?.map((orderItem, index) => (
-          <Text key={index} style={styles.orderItemText}>
-            {orderItem.quantity}x {orderItem.name} (${orderItem.price.toFixed(2)})
-          </Text>
-        ))}
-      </View>
+      {(item.orderItems || []).map((orderItem, index) => (
+  <Text key={index} style={styles.orderItemText}>
+    {orderItem.quantity}x {orderItem.name} (${orderItem.price.toFixed(2)})
+  </Text>
+))}
+
 
       <View style={styles.orderFooter}>
         <Text style={styles.totalItems}>

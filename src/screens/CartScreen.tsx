@@ -16,11 +16,14 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 interface Address {
   id: string;
-  address_line1: string;
-  address_line2?: string;
+  label: string;
+  street_address: string;
   city: string;
   state: string;
-  postal_code: string;
+  zip_code: string;
+  phone_number: string;
+  latitude?: number;
+  longitude?: number;
   is_default: boolean;
 }
 
@@ -40,12 +43,12 @@ export function CartScreen({ navigation }: { navigation: any }) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No user found');
-
       const { data, error } = await supabase
-        .from('Addresses')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('is_default', { ascending: false });
+      .from('Addresses')
+      .select('id, label, street_address, city, state, zip_code, phone_number, latitude, longitude, is_default')
+      .eq('user_id', user.id)
+      .order('is_default', { ascending: false });
+    
 
       if (error) throw error;
       setAddresses(data || []);
@@ -68,10 +71,22 @@ export function CartScreen({ navigation }: { navigation: any }) {
       let deliveryAddress = selectedAddress;
       if (useNewAddress) {
         const { data: addressData, error: addressError } = await supabase
-          .from('Addresses')
-          .insert([{ ...newAddress, user_id: user.id }])
-          .select()
-          .single();
+        .from('Addresses')
+        .insert([{ 
+          user_id: user.id,
+          label: newAddress.label || 'Home',
+          street_address: newAddress.street_address,
+          city: newAddress.city,
+          state: newAddress.state,
+          zip_code: newAddress.zip_code,
+          phone_number: newAddress.phone_number,
+          latitude: newAddress.latitude || null,
+          longitude: newAddress.longitude || null,
+          is_default: newAddress.is_default || false
+        }])
+        .select()
+        .single();
+      
 
         if (addressError) throw addressError;
         deliveryAddress = addressData;
@@ -229,12 +244,18 @@ export function CartScreen({ navigation }: { navigation: any }) {
                     setUseNewAddress(false);
                   }}
                 >
+<Text style={styles.addressText}>
+  {address.label}: {address.street_address}
+</Text>
+<Text style={styles.addressText}>
+  {address.city}, {address.state} {address.zip_code}
+</Text>
+<Text style={styles.addressText}>
+  Phone: {address.phone_number}
+</Text>
+
                   <Text style={styles.addressText}>
-                    {address.address_line1}
-                    {address.address_line2 ? `, ${address.address_line2}` : ''}
-                  </Text>
-                  <Text style={styles.addressText}>
-                    {address.city}, {address.state} {address.postal_code}
+                    {address.city}, {address.state} {address.zip_code}
                   </Text>
                   {address.is_default && (
                     <Text style={styles.defaultBadge}>Default</Text>
@@ -254,18 +275,20 @@ export function CartScreen({ navigation }: { navigation: any }) {
 
           {useNewAddress && (
             <View style={styles.form}>
-              <TextInput
-                style={styles.input}
-                value={newAddress.address_line1}
-                onChangeText={(text) => setNewAddress({ ...newAddress, address_line1: text })}
-                placeholder="Address Line 1"
-              />
-              <TextInput
-                style={styles.input}
-                value={newAddress.address_line2}
-                onChangeText={(text) => setNewAddress({ ...newAddress, address_line2: text })}
-                placeholder="Address Line 2 (Optional)"
-              />
+<TextInput
+  style={styles.input}
+  value={newAddress.street_address}
+  onChangeText={(text) => setNewAddress({ ...newAddress, street_address: text })}
+  placeholder="Street Address"
+/>
+<TextInput
+  style={styles.input}
+  value={newAddress.phone_number}
+  onChangeText={(text) => setNewAddress({ ...newAddress, phone_number: text })}
+  placeholder="Phone Number"
+  keyboardType="phone-pad"
+/>
+
               <TextInput
                 style={styles.input}
                 value={newAddress.city}
@@ -280,8 +303,8 @@ export function CartScreen({ navigation }: { navigation: any }) {
               />
               <TextInput
                 style={styles.input}
-                value={newAddress.postal_code}
-                onChangeText={(text) => setNewAddress({ ...newAddress, postal_code: text })}
+                value={newAddress.zip_code}
+                onChangeText={(text) => setNewAddress({ ...newAddress, zip_code: text })}
                 placeholder="Postal Code"
                 keyboardType="numeric"
               />

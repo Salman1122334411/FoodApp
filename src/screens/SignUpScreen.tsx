@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 
@@ -58,7 +59,15 @@ export const SignUpScreen = ({ navigation }: { navigation: any }) => {
 
   return (
     <View style={styles.container}>
+      {/* Added Logo */}
+      <Image
+        source={require('../../assets/splash.png')}
+        style={styles.logo}
+        resizeMode="contain"
+      />
+
       <Text style={styles.title}>Create Account</Text>
+
       <TextInput
         style={styles.input}
         placeholder="Email"
@@ -108,6 +117,11 @@ const styles = StyleSheet.create({
     padding: 20,
     justifyContent: 'center',
     backgroundColor: '#fff',
+  },
+  logo: {
+    width: 150,
+    height: 150,
+    alignSelf: 'center',
   },
   title: {
     fontSize: 24,
