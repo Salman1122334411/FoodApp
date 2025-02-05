@@ -13,7 +13,7 @@ import { useCart } from '../hooks/useCart';
 import { supabase } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
 interface Address {
   id: string;
   label: string;
@@ -34,21 +34,66 @@ export function CartScreen({ navigation }: { navigation: any }) {
   const [newAddress, setNewAddress] = useState<Partial<Address>>({});
   const [useNewAddress, setUseNewAddress] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<{
+    street_address?: string;
+    city?: string;
+    state?: string;
+    zip_code?: string;
+    phone_number?: string;
+  }>({});
 
   useEffect(() => {
     fetchAddresses();
   }, []);
+
+  const validateAddress = () => {
+    const errors: typeof validationErrors = {};
+
+    // Street Address validation
+    if (!newAddress.street_address?.trim()) {
+      errors.street_address = 'Street address is required';
+    }
+
+    // City validation
+    if (!newAddress.city?.trim()) {
+      errors.city = 'City is required';
+    }
+
+    // State validation
+    if (!newAddress.state?.trim()) {
+      errors.state = 'State is required';
+    } else if (!/^[A-Za-z\s]{2,50}$/.test(newAddress.state.trim())) {
+      errors.state = 'State must be a valid name (e.g., Pakistan, India)';
+    }
+    
+    // Zip code validation
+    if (!newAddress.zip_code?.trim()) {
+      errors.zip_code = 'Postal code is required';
+    } else if (!/^\d{5}(-\d{4})?$/.test(newAddress.zip_code.trim())) {
+      errors.zip_code = 'Invalid postal code format';
+    }
+
+    if (!newAddress.phone_number?.trim()) {
+      errors.phone_number = 'Phone number is required';
+    } else if (!/^\d{11}$/.test(newAddress.phone_number.trim())) {
+      errors.phone_number = 'Phone number must be exactly 11 digits long';
+    }
+    
+    
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const fetchAddresses = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No user found');
       const { data, error } = await supabase
-      .from('Addresses')
-      .select('id, label, street_address, city, state, zip_code, phone_number, latitude, longitude, is_default')
-      .eq('user_id', user.id)
-      .order('is_default', { ascending: false });
-    
+        .from('Addresses')
+        .select('id, label, street_address, city, state, zip_code, phone_number, latitude, longitude, is_default')
+        .eq('user_id', user.id)
+        .order('is_default', { ascending: false });
 
       if (error) throw error;
       setAddresses(data || []);
@@ -68,25 +113,31 @@ export function CartScreen({ navigation }: { navigation: any }) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No user found');
 
+      if (useNewAddress) {
+        if (!validateAddress()) {
+          Alert.alert('Validation Error', 'Please correct the address information');
+          return;
+        }
+      }
+
       let deliveryAddress = selectedAddress;
       if (useNewAddress) {
         const { data: addressData, error: addressError } = await supabase
-        .from('Addresses')
-        .insert([{ 
-          user_id: user.id,
-          label: newAddress.label || 'Home',
-          street_address: newAddress.street_address,
-          city: newAddress.city,
-          state: newAddress.state,
-          zip_code: newAddress.zip_code,
-          phone_number: newAddress.phone_number,
-          latitude: newAddress.latitude || null,
-          longitude: newAddress.longitude || null,
-          is_default: newAddress.is_default || false
-        }])
-        .select()
-        .single();
-      
+          .from('Addresses')
+          .insert([{ 
+            user_id: user.id,
+            label: newAddress.label || 'Home',
+            street_address: newAddress.street_address,
+            city: newAddress.city,
+            state: newAddress.state,
+            zip_code: newAddress.zip_code,
+            phone_number: newAddress.phone_number,
+            latitude: newAddress.latitude || null,
+            longitude: newAddress.longitude || null,
+            is_default: newAddress.is_default || false
+          }])
+          .select()
+          .single();
 
         if (addressError) throw addressError;
         deliveryAddress = addressData;
@@ -182,6 +233,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scrollView}>
+        {/* Restaurant Items Section */}
         {Object.entries(groupedItems).map(([restaurantId, { name, items }]) => (
           <View key={restaurantId} style={styles.restaurantSection}>
             <Text style={styles.restaurantName}>{name}</Text>
@@ -194,12 +246,12 @@ export function CartScreen({ navigation }: { navigation: any }) {
                   </Text>
                 </View>
                 <View style={styles.quantityContainer}>
-                <TouchableOpacity
-  style={styles.quantityButton}
-  onPress={() => removeFromCart(item.id)}
->
-  <Text style={styles.quantityButtonText}>-</Text>
-</TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.quantityButton}
+                    onPress={() => removeFromCart(item.id)}
+                  >
+                    <Text style={styles.quantityButtonText}>-</Text>
+                  </TouchableOpacity>
                   <Text style={styles.quantity}>{item.quantity}</Text>
                   <TouchableOpacity
                     style={styles.quantityButton}
@@ -216,6 +268,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
           </View>
         ))}
 
+        {/* Address Section */}
         <View style={styles.addressSection}>
           <Text style={styles.sectionTitle}>Delivery Address</Text>
           
@@ -223,7 +276,6 @@ export function CartScreen({ navigation }: { navigation: any }) {
             style={styles.addressOption}
             onPress={() => {
               setUseNewAddress(false);
-              navigation.navigate('Address');
             }}
           >
             <Ionicons name="location-outline" size={24} color="#FF4B2B" />
@@ -244,18 +296,14 @@ export function CartScreen({ navigation }: { navigation: any }) {
                     setUseNewAddress(false);
                   }}
                 >
-<Text style={styles.addressText}>
-  {address.label}: {address.street_address}
-</Text>
-<Text style={styles.addressText}>
-  {address.city}, {address.state} {address.zip_code}
-</Text>
-<Text style={styles.addressText}>
-  Phone: {address.phone_number}
-</Text>
-
+                  <Text style={styles.addressText}>
+                    {address.label}: {address.street_address}
+                  </Text>
                   <Text style={styles.addressText}>
                     {address.city}, {address.state} {address.zip_code}
+                  </Text>
+                  <Text style={styles.addressText}>
+                    Phone: {address.phone_number}
                   </Text>
                   {address.is_default && (
                     <Text style={styles.defaultBadge}>Default</Text>
@@ -275,39 +323,90 @@ export function CartScreen({ navigation }: { navigation: any }) {
 
           {useNewAddress && (
             <View style={styles.form}>
+              <TextInput
+                style={[
+                  styles.input, 
+                  validationErrors.street_address && styles.inputError
+                ]}
+                value={newAddress.street_address}
+                onChangeText={(text) => {
+                  setNewAddress({ ...newAddress, street_address: text });
+                  setValidationErrors({ ...validationErrors, street_address: undefined });
+                }}
+                placeholder="Street Address"
+              />
+              {validationErrors.street_address && (
+                <Text style={styles.errorText}>{validationErrors.street_address}</Text>
+              )}
+
 <TextInput
-  style={styles.input}
-  value={newAddress.street_address}
-  onChangeText={(text) => setNewAddress({ ...newAddress, street_address: text })}
-  placeholder="Street Address"
-/>
-<TextInput
-  style={styles.input}
+  style={[
+    styles.input, 
+    validationErrors.phone_number && styles.inputError
+  ]}
   value={newAddress.phone_number}
-  onChangeText={(text) => setNewAddress({ ...newAddress, phone_number: text })}
+  onChangeText={(text) => {
+    const cleanedText = text.replace(/\D/g, ''); // Remove non-numeric characters
+    setNewAddress({ ...newAddress, phone_number: cleanedText });
+    setValidationErrors({ ...validationErrors, phone_number: undefined });
+  }}
   placeholder="Phone Number"
   keyboardType="phone-pad"
 />
+{validationErrors.phone_number && (
+  <Text style={styles.errorText}>{validationErrors.phone_number}</Text>
+)}
+
 
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input, 
+                  validationErrors.city && styles.inputError
+                ]}
                 value={newAddress.city}
-                onChangeText={(text) => setNewAddress({ ...newAddress, city: text })}
+                onChangeText={(text) => {
+                  setNewAddress({ ...newAddress, city: text });
+                  setValidationErrors({ ...validationErrors, city: undefined });
+                }}
                 placeholder="City"
               />
+              {validationErrors.city && (
+                <Text style={styles.errorText}>{validationErrors.city}</Text>
+              )}
+
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input, 
+                  validationErrors.state && styles.inputError
+                ]}
                 value={newAddress.state}
-                onChangeText={(text) => setNewAddress({ ...newAddress, state: text })}
+                onChangeText={(text) => {
+                  setNewAddress({ ...newAddress, state: text.toUpperCase() });
+                  setValidationErrors({ ...validationErrors, state: undefined });
+                }}
                 placeholder="State"
               />
+              {validationErrors.state && (
+                <Text style={styles.errorText}>{validationErrors.state}</Text>
+              )}
+
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input, 
+                  validationErrors.zip_code && styles.inputError
+                ]}
                 value={newAddress.zip_code}
-                onChangeText={(text) => setNewAddress({ ...newAddress, zip_code: text })}
+                onChangeText={(text) => {
+                  setNewAddress({ ...newAddress, zip_code: text });
+                  setValidationErrors({ ...validationErrors, zip_code: undefined });
+                }}
                 placeholder="Postal Code"
                 keyboardType="numeric"
+                maxLength={10}
               />
+              {validationErrors.zip_code && (
+                <Text style={styles.errorText}>{validationErrors.zip_code}</Text>
+              )}
             </View>
           )}
         </View>
@@ -333,7 +432,6 @@ export function CartScreen({ navigation }: { navigation: any }) {
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -491,5 +589,14 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  inputError: {
+    borderColor: 'red',
+    borderWidth: 1,
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 12,
+    marginBottom: 5,
   },
 });

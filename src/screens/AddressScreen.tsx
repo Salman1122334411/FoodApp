@@ -37,16 +37,58 @@ export function AddressScreen() {
   } = useAddress();
   const [addingAddress, setAddingAddress] = useState(false);
   const [newAddress, setNewAddress] = useState<Partial<Address>>({});
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchAddresses();
   }, []);
 
+  const validateAddress = () => {
+    let errors: Record<string, string> = {};
+
+    if (!newAddress.label?.trim()) {
+      errors.label = 'Label is required';
+    }
+
+    if (!newAddress.street_address?.trim()) {
+      errors.street_address = 'Street address is required';
+    }
+
+    if (!newAddress.city?.trim()) {
+      errors.city = 'City is required';
+    }
+
+    if (!newAddress.state?.trim()) {
+      errors.state = 'State is required';
+    } else if (!/^[A-Za-z\s]+$/.test(newAddress.state.trim())) {
+      errors.state = 'State must be a valid country name';
+    }
+
+    if (!newAddress.zip_code?.trim()) {
+      errors.zip_code = 'Postal code is required';
+    } else if (!/^\d{5}(-\d{4})?$/.test(newAddress.zip_code.trim())) {
+      errors.zip_code = 'Invalid postal code format';
+    }
+
+
+    if (!newAddress.phone_number?.trim()) {
+      errors.phone_number = 'Phone number is required';
+    } else if (!/^\d{11}$/.test(newAddress.phone_number.trim())) {
+      errors.phone_number = 'Phone number must be exactly 11 digits';
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleAddAddress = async () => {
+    if (!validateAddress()) return;
+
     try {
       await addAddress(newAddress);
       setAddingAddress(false);
       setNewAddress({});
+      setValidationErrors({});
       Alert.alert('Success', 'Address added successfully');
     } catch (error) {
       console.error('Error adding address:', error);
@@ -74,43 +116,65 @@ export function AddressScreen() {
       {addingAddress && (
         <View style={styles.form}>
           <TextInput
-            style={styles.input}
+            style={[styles.input, validationErrors.label && styles.inputError]}
             value={newAddress.label}
             onChangeText={(text) => setNewAddress({ ...newAddress, label: text })}
             placeholder="Label (e.g., Home)"
           />
+          {validationErrors.label && <Text style={styles.errorText}>{validationErrors.label}</Text>}
+
           <TextInput
-            style={styles.input}
+            style={[styles.input, validationErrors.street_address && styles.inputError]}
             value={newAddress.street_address}
             onChangeText={(text) => setNewAddress({ ...newAddress, street_address: text })}
             placeholder="Street Address"
           />
+          {validationErrors.street_address && <Text style={styles.errorText}>{validationErrors.street_address}</Text>}
+
           <TextInput
-            style={styles.input}
+            style={[styles.input, validationErrors.city && styles.inputError]}
             value={newAddress.city}
             onChangeText={(text) => setNewAddress({ ...newAddress, city: text })}
             placeholder="City"
           />
+          {validationErrors.city && <Text style={styles.errorText}>{validationErrors.city}</Text>}
+
+         <TextInput
+        style={[
+                           styles.input, 
+                           validationErrors.state && styles.inputError
+                         ]}
+                         value={newAddress.state}
+                         onChangeText={(text) => {
+                           setNewAddress({ ...newAddress, state: text.toUpperCase() });
+                           setValidationErrors({ ...validationErrors, state: undefined });
+                         }}
+                         placeholder="State"
+                       />
+          {validationErrors.state && <Text style={styles.errorText}>{validationErrors.state}</Text>}
+
           <TextInput
-            style={styles.input}
-            value={newAddress.state}
-            onChangeText={(text) => setNewAddress({ ...newAddress, state: text })}
-            placeholder="State"
-          />
-          <TextInput
-            style={styles.input}
+            style={[styles.input, validationErrors.zip_code && styles.inputError]}
             value={newAddress.zip_code}
             onChangeText={(text) => setNewAddress({ ...newAddress, zip_code: text })}
             placeholder="Zip Code"
             keyboardType="numeric"
           />
+          {validationErrors.zip_code && <Text style={styles.errorText}>{validationErrors.zip_code}</Text>}
+
           <TextInput
-            style={styles.input}
+            style={[styles.input, validationErrors.phone_number && styles.inputError]}
             value={newAddress.phone_number}
-            onChangeText={(text) => setNewAddress({ ...newAddress, phone_number: text })}
+            onChangeText={(text) => {
+              const cleanedText = text.replace(/\D/g, '');
+              setNewAddress({ ...newAddress, phone_number: cleanedText });
+              setValidationErrors({ ...validationErrors, phone_number: undefined });
+            }}
             placeholder="Phone Number"
             keyboardType="phone-pad"
           />
+          {validationErrors.phone_number && <Text style={styles.errorText}>{validationErrors.phone_number}</Text>}
+
           <TouchableOpacity style={styles.button} onPress={handleAddAddress}>
             <Text style={styles.buttonText}>Add Address</Text>
           </TouchableOpacity>
@@ -224,4 +288,15 @@ const styles = StyleSheet.create({
   addressButton: {
     padding: 8,
   },
+  inputError: {
+    borderColor: 'red', 
+    borderWidth: 1, 
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 12,
+    marginTop: 4,
+  },
+
+  
 });

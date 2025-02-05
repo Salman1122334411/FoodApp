@@ -116,6 +116,24 @@ export const searchRestaurants = async (searchTerm: string): Promise<Restaurant[
   return data || [];
 };
 
+export const searchMenuItems = async (searchTerm: string): Promise<MenuItem[]> => {
+  const { data, error } = await supabase
+    .from('MenuItem')
+    .select(`
+      *,
+      Restaurant (*)
+    `)
+    .or(`
+      label.ilike.%${searchTerm}%,
+      description.ilike.%${searchTerm}%
+    `)
+    .order('createdAt', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
+};
+
+
 export const getNearbyRestaurants = async (
   latitude: number,
   longitude: number,

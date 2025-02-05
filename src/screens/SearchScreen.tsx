@@ -1,30 +1,29 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-} from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { searchRestaurants } from '../lib/supabase'; // Import the search function
 
-const RECENT_SEARCHES = [
-  'Pizza',
-  'Burger',
-  'Sushi',
-  'Italian',
-];
-
-const POPULAR_CUISINES = [
-  { id: '1', name: 'Italian', count: '150+ places' },
-  { id: '2', name: 'Chinese', count: '120+ places' },
-  { id: '3', name: 'Japanese', count: '90+ places' },
-  { id: '4', name: 'Mexican', count: '80+ places' },
-];
-
-export function SearchScreen() {
+export const SearchScreen = ({ navigation }: { navigation: any }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [restaurants, setRestaurants] = useState([]);
+
+  // Fetch restaurants when searchQuery changes
+  useEffect(() => {
+    const fetchRestaurants = async () => {
+      if (searchQuery) {
+        try {
+          const result = await searchRestaurants(searchQuery);
+          setRestaurants(result);
+        } catch (error) {
+          console.error(error);
+        }
+      } else {
+        setRestaurants([]);
+      }
+    };
+
+    fetchRestaurants();
+  }, [searchQuery]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -39,15 +38,25 @@ export function SearchScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Search Results */}
+        {restaurants.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Search Results</Text>
+            {restaurants.map((restaurant) => (
+              <TouchableOpacity key={restaurant.id} style={styles.cuisineItem}>
+                <Text style={styles.cuisineName}>{restaurant.name}</Text>
+                <Text style={styles.cuisineCount}>{restaurant.city}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         {/* Recent Searches */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recent Searches</Text>
           <View style={styles.recentSearches}>
-            {RECENT_SEARCHES.map((search, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.recentSearchItem}
-              >
+            {['Pizza', 'Burger', 'Sushi', 'Italian'].map((search, index) => (
+              <TouchableOpacity key={index} style={styles.recentSearchItem}>
                 <Text style={styles.recentSearchText}>{search}</Text>
               </TouchableOpacity>
             ))}
@@ -57,11 +66,13 @@ export function SearchScreen() {
         {/* Popular Cuisines */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Popular Cuisines</Text>
-          {POPULAR_CUISINES.map((cuisine) => (
-            <TouchableOpacity
-              key={cuisine.id}
-              style={styles.cuisineItem}
-            >
+          {[
+            { id: '1', name: 'Italian', count: '150+ places' },
+            { id: '2', name: 'Chinese', count: '120+ places' },
+            { id: '3', name: 'Japanese', count: '90+ places' },
+            { id: '4', name: 'Mexican', count: '80+ places' },
+          ].map((cuisine) => (
+            <TouchableOpacity key={cuisine.id} style={styles.cuisineItem}>
               <Text style={styles.cuisineName}>{cuisine.name}</Text>
               <Text style={styles.cuisineCount}>{cuisine.count}</Text>
             </TouchableOpacity>
@@ -70,7 +81,7 @@ export function SearchScreen() {
       </ScrollView>
     </SafeAreaView>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
