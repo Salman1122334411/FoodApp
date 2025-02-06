@@ -1,29 +1,37 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { searchRestaurants } from '../lib/supabase'; // Import the search function
+import { searchRestaurants,searchMenuItems } from '../lib/supabase'; // Import the search function
 
 export const SearchScreen = ({ navigation }: { navigation: any }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [restaurants, setRestaurants] = useState([]);
+  const [menuItems, setMenuItems] = useState([]);
 
   // Fetch restaurants when searchQuery changes
   useEffect(() => {
-    const fetchRestaurants = async () => {
+    const fetchResults = async () => {
       if (searchQuery) {
         try {
-          const result = await searchRestaurants(searchQuery);
-          setRestaurants(result);
+          const [restaurantResults, menuItemResults] = await Promise.all([
+            searchRestaurants(searchQuery),
+            searchMenuItems(searchQuery),
+          ]);
+          setRestaurants(restaurantResults);
+          setMenuItems(menuItemResults);
         } catch (error) {
           console.error(error);
         }
       } else {
         setRestaurants([]);
+        setMenuItems([]);
       }
     };
-
-    fetchRestaurants();
+  
+    fetchResults();
   }, [searchQuery]);
+  
+  
 
   return (
     <SafeAreaView style={styles.container}>
@@ -62,6 +70,17 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
             ))}
           </View>
         </View>
+        {menuItems.length > 0 && (
+  <View style={styles.section}>
+    <Text style={styles.sectionTitle}>Menu Items</Text>
+    {menuItems.map((item) => (
+      <TouchableOpacity key={item.id} style={styles.cuisineItem}>
+        <Text style={styles.cuisineName}>{item.label}</Text>
+        <Text style={styles.cuisineCount}>{item.Restaurant?.name}</Text>
+      </TouchableOpacity>
+    ))}
+  </View>
+)}
 
         {/* Popular Cuisines */}
         <View style={styles.section}>

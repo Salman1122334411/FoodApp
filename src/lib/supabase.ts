@@ -102,36 +102,33 @@ export const getRestaurantsByFilters = async ({
   return data || [];
 };
 
-export const searchRestaurants = async (searchTerm: string): Promise<Restaurant[]> => {
+export const searchRestaurants = async (searchTerm: string) => {
   const { data, error } = await supabase
     .from('Restaurant')
-    .select(`
-      *,
-      MenuItem (*)
-    `)
-    .or(`name.ilike.%${searchTerm}%,chainName.ilike.%${searchTerm}%,cuisineType.ilike.%${searchTerm}%`)
+    .select('*')
+    .or(`name.ilike.%${searchTerm}%`)
     .order('rating', { ascending: false });
 
   if (error) throw error;
   return data || [];
 };
 
-export const searchMenuItems = async (searchTerm: string): Promise<MenuItem[]> => {
+export const searchMenuItems = async (searchTerm: string) => {
   const { data, error } = await supabase
     .from('MenuItem')
     .select(`
-      *,
-      Restaurant (*)
+      id,
+      label,
+      Restaurant:restaurantId (id, name, city)
     `)
-    .or(`
-      label.ilike.%${searchTerm}%,
-      description.ilike.%${searchTerm}%
-    `)
-    .order('createdAt', { ascending: false });
+    .or(`label.ilike.%${searchTerm}%`);
 
   if (error) throw error;
   return data || [];
 };
+
+
+
 
 
 export const getNearbyRestaurants = async (

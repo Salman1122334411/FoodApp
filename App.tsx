@@ -22,7 +22,7 @@ import { CartScreen } from './src/screens/CartScreen';
 import { EditProfileScreen } from './src/screens/EditUserProfile';
 import { AddressScreen } from './src/screens/AddressScreen';
 import { OrderDetailsScreen } from './src/screens/OrdersDetailScreen';
-
+import { CheckoutScreen } from './src/screens/CheckoutScreen';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
@@ -174,6 +174,14 @@ function NavigationContent() {
             component={OrderDetailsScreen}
             options={{
               title: 'Order Details',
+              headerBackTitle: 'Back',
+            }}
+          />
+          <Stack.Screen
+            name="Checkout"
+            component={CheckoutScreen}
+            options={{
+              title: 'Checkout',
               headerBackTitle: 'Back',
             }}
           />

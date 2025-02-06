@@ -18,7 +18,9 @@ interface Address {
 }
 
 interface AddressState {
+
   addresses: Address[];
+
   loading: boolean;
   fetchAddresses: () => Promise<void>;
   addAddress: (newAddress: Partial<Address>) => Promise<void>;
