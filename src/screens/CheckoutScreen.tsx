@@ -5,99 +5,144 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, RouteProp, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase'; // Import Supabase client
+import { useCart } from '../hooks/useCart';
+
+type Address = {
+  id: string;
+  label: string;
+  street_address: string;
+  city: string;
+  state: string;
+  zip_code: string;
+  phone_number: string;
+  // add additional fields as needed
+};
 
 type RootStackParamList = {
   Orders: undefined;
-  // Add other screens here as needed
+  CheckoutScreen: {
+    cartItems: any[];
+    total: number;
+    deliveryAddress: Address;
+  };
 };
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'CheckoutScreen'>;
+type CheckoutScreenRouteProp = RouteProp<RootStackParamList, 'CheckoutScreen'>;
 
 export function CheckoutScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const [address, setAddress] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('card');
-  const [cardNumber, setCardNumber] = useState('');
-  const [expiryDate, setExpiryDate] = useState('');
-  const [cvv, setCvv] = useState('');
+  const route = useRoute<CheckoutScreenRouteProp>();
+  const { cartItems, total, deliveryAddress } = route.params;
+  const { clearCart } = useCart(); // Access clearCart from cart hook
+  const [paymentMethod, setPaymentMethod] = useState('cod'); // Default to Cash on Delivery
+  const [loading, setLoading] = useState(false);
 
   const handlePlaceOrder = async () => {
     try {
+      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      const orderDetails = {
-        user_id: user.id,
-        address_id: address, // Assuming address is the ID of the address being used
-        total_amount: 23.96, // Replace with actual total amount calculation
-        status: 'PENDING',
-      };
+      // Group items by restaurant
+      const restaurantGroups = cartItems.reduce((acc, item) => {
+        const key = item.restaurantId;
+        if (!acc[key]) {
+          acc[key] = {
+            restaurantId: item.restaurantId,
+            items: [],
+            total: 0,
+          };
+        }
+        acc[key].items.push(item);
+        acc[key].total += item.price * item.quantity;
+        return acc;
+      }, {} as Record<string, any>);
 
-      const { error } = await supabase
-        .from('orders')
-        .insert([orderDetails]);
+      // Create orders and order items for each restaurant group
+      for (const restaurantId of Object.keys(restaurantGroups)) {
+        const group = restaurantGroups[restaurantId];
 
-      if (error) throw error;
+        // Create order record
+        const { data: orderData, error: orderError } = await supabase
+        
+          .from('Order') // Adjust table name if needed (e.g., 'orders')
+          .insert([{
+            userId: user.id,
+            restaurantId: restaurantId,
+            status: 'PENDING',
+            totalAmount: group.total,
+            deliveryAddress: deliveryAddress, // Storing the entire address object or just a formatted string as required
+            payment_method: paymentMethod,
+          }])
+          .select('id')
+          .single();
+          console.log("Order Payload:", orderData);
+        if (orderError) throw orderError;
 
+        // Map order items for the order
+        const orderItems = group.items.map((item: any) => ({
+          orderid: orderData.id,
+          menuitemid: item.id,
+          quantity: item.quantity,
+          price: item.price,
+          name: item.name,
+        }));
+
+        // Insert order items
+        const { error: itemsError } = await supabase
+          .from('OrderItem') // Adjust table name if needed (e.g., 'order_items')
+          .insert(orderItems);
+
+        if (itemsError) throw itemsError;
+      }
+      
+      clearCart(); // Clear cart after success
       navigation.navigate('Orders');
+      Alert.alert('Success', 'Order placed successfully!');
     } catch (error) {
-      console.error('Error placing order:', error);
-      // Handle error (e.g., show an alert)
+      console.error('Order placement error:', error);
+      Alert.alert('Error', 'Failed to place order');
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Show a loading indicator if the order is being placed
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#FF4B2B" />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-
-
       <ScrollView style={styles.content}>
-        {/* Delivery Address */}
+        {/* Delivery Address Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Delivery Address</Text>
-          <TextInput
-            style={styles.input}
-            value={address}
-            onChangeText={setAddress}
-            placeholder="Enter your delivery address"
-            multiline
-            numberOfLines={3}
-          />
+          <Text style={styles.addressText}>{deliveryAddress.label}</Text>
+          <Text style={styles.addressText}>{deliveryAddress.street_address}</Text>
+          <Text style={styles.addressText}>
+            {deliveryAddress.city}, {deliveryAddress.state} {deliveryAddress.zip_code}
+          </Text>
+          <Text style={styles.addressText}>{deliveryAddress.phone_number}</Text>
         </View>
 
-        {/* Payment Method */}
+        {/* Payment Method Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Payment Method</Text>
           <View style={styles.paymentOptions}>
-            <TouchableOpacity
-              style={[
-                styles.paymentOption,
-                paymentMethod === 'card' && styles.selectedPaymentOption,
-              ]}
-              onPress={() => setPaymentMethod('card')}
-            >
-              <Ionicons
-                name="card-outline"
-                size={24}
-                color={paymentMethod === 'card' ? '#FF4B2B' : '#6B7280'}
-              />
-              <Text
-                style={[
-                  styles.paymentOptionText,
-                  paymentMethod === 'card' && styles.selectedPaymentOptionText,
-                ]}
-              >
-                Credit/Debit Card
-              </Text>
-            </TouchableOpacity>
-
             <TouchableOpacity
               style={[
                 styles.paymentOption,
@@ -122,42 +167,12 @@ export function CheckoutScreen() {
           </View>
         </View>
 
-        {/* Card Details */}
-        {paymentMethod === 'card' && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Card Details</Text>
-            <TextInput
-              style={styles.input}
-              value={cardNumber}
-              onChangeText={setCardNumber}
-              placeholder="Card Number"
-              keyboardType="numeric"
-            />
-            <View style={styles.row}>
-              <TextInput
-                style={[styles.input, { flex: 1, marginRight: 8 }]}
-                value={expiryDate}
-                onChangeText={setExpiryDate}
-                placeholder="MM/YY"
-              />
-              <TextInput
-                style={[styles.input, { flex: 1, marginLeft: 8 }]}
-                value={cvv}
-                onChangeText={setCvv}
-                placeholder="CVV"
-                keyboardType="numeric"
-                secureTextEntry
-              />
-            </View>
-          </View>
-        )}
-
-        {/* Order Summary */}
+        {/* Order Summary Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Order Summary</Text>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryText}>Subtotal</Text>
-            <Text style={styles.summaryValue}>$20.97</Text>
+            <Text style={styles.summaryValue}>${total.toFixed(2)}</Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryText}>Delivery Fee</Text>
@@ -165,7 +180,7 @@ export function CheckoutScreen() {
           </View>
           <View style={[styles.summaryRow, styles.totalRow]}>
             <Text style={styles.totalText}>Total</Text>
-            <Text style={styles.totalValue}>$23.96</Text>
+            <Text style={styles.totalValue}>${(total + 2.99).toFixed(2)}</Text>
           </View>
         </View>
       </ScrollView>
@@ -188,21 +203,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  header: {
-    flexDirection: 'row',
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1F2937',
   },
   content: {
     flex: 1,
@@ -218,13 +222,10 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     marginBottom: 16,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 8,
-    padding: 12,
+  addressText: {
     fontSize: 16,
-    color: '#1F2937',
+    color: '#4B5563',
+    marginBottom: 4,
   },
   paymentOptions: {
     flexDirection: 'row',
@@ -251,10 +252,6 @@ const styles = StyleSheet.create({
   },
   selectedPaymentOptionText: {
     color: '#FF4B2B',
-  },
-  row: {
-    flexDirection: 'row',
-    marginTop: 12,
   },
   summaryRow: {
     flexDirection: 'row',

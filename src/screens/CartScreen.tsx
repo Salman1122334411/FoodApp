@@ -107,108 +107,63 @@ export function CartScreen({ navigation }: { navigation: any }) {
     }
   };
 
-  const handleCheckout = async () => {
-    try {
-      setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No user found');
+const handleCheckout = async () => {
+  try {
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('No user found');
 
-      if (useNewAddress) {
-        if (!validateAddress()) {
-          Alert.alert('Validation Error', 'Please correct the address information');
-          return;
-        }
-      }
+    let deliveryAddress = selectedAddress;
 
-      let deliveryAddress = selectedAddress;
-      if (useNewAddress) {
-        const { data: addressData, error: addressError } = await supabase
-          .from('Addresses')
-          .insert([{ 
-            user_id: user.id,
-            label: newAddress.label || 'Home',
-            street_address: newAddress.street_address,
-            city: newAddress.city,
-            state: newAddress.state,
-            zip_code: newAddress.zip_code,
-            phone_number: newAddress.phone_number,
-            latitude: newAddress.latitude || null,
-            longitude: newAddress.longitude || null,
-            is_default: newAddress.is_default || false
-          }])
-          .select()
-          .single();
-
-        if (addressError) throw addressError;
-        deliveryAddress = addressData;
-      }
-
-      if (!deliveryAddress) {
-        Alert.alert('Error', 'Please select or add a delivery address');
+    // Handle new address if enabled
+    if (useNewAddress) {
+      if (!validateAddress()) {
+        Alert.alert('Validation Error', 'Please correct the address information');
         return;
       }
 
-      // Group items by restaurant
-      const restaurantGroups = cartItems.reduce((acc, item) => {
-        const key = item.restaurantId;
-        if (!acc[key]) {
-          acc[key] = {
-            restaurantId: item.restaurantId,
-            items: [],
-            total: 0,
-          };
-        }
-        acc[key].items.push(item);
-        acc[key].total += item.price * item.quantity;
-        return acc;
-      }, {} as Record<string, any>);
-  
-      // Create orders and order items
-      for (const restaurantId of Object.keys(restaurantGroups)) {
-        const group = restaurantGroups[restaurantId];
-        
-        // Create order
-        const { data: orderData, error: orderError } = await supabase
-          .from('Order')
-          .insert([{
-            userId: user.id,
-            restaurantId: restaurantId,
-            status: 'PENDING',
-            totalAmount: group.total,
-            deliveryAddress: deliveryAddress,
-          }])
-          .select('id')
-          .single();
-  
-        if (orderError) throw orderError;
-  
-        // Create order items
-        const orderItems = group.items.map((item: any) => ({
-          orderid: orderData.id,
-          menuitemid: item.id,
-          quantity: item.quantity,
-          price: item.price,
-          name: item.name,
-        }));
-  
-        const { error: itemsError } = await supabase
-          .from('OrderItem')
-          .insert(orderItems);
-  
-        if (itemsError) throw itemsError;
-      }
-  
-      clearCart();
-      navigation.navigate('Orders');
-      Alert.alert('Success', 'Order placed successfully!');
-    } catch (error) {
-      console.error('Error placing order:', error);
-      Alert.alert('Error', 'Failed to place order');
-    } finally {
-      setLoading(false);
-    }
-  };
+      // Insert new address
+      const { data: addressData, error: addressError } = await supabase
+        .from('Addresses')
+        .insert([{ 
+          user_id: user.id,
+          label: newAddress.label || 'Home',
+          street_address: newAddress.street_address,
+          city: newAddress.city,
+          state: newAddress.state,
+          zip_code: newAddress.zip_code,
+          phone_number: newAddress.phone_number,
+          latitude: newAddress.latitude || null,
+          longitude: newAddress.longitude || null,
+          is_default: newAddress.is_default || false
+        }])
+        .select()
+        .single();
 
+      if (addressError) throw addressError;
+      deliveryAddress = addressData;
+    }
+
+    if (!deliveryAddress) {
+      Alert.alert('Error', 'Please select or add a delivery address');
+      return;
+    }
+
+    // Navigate to CheckoutScreen with required data
+    navigation.navigate('CheckoutScreen', { 
+      cartItems,
+      deliveryAddress,
+      total
+    });
+
+  } catch (error) {
+    console.error('Checkout preparation error:', error);
+    Alert.alert('Error', 'Failed to proceed to checkout');
+  } finally {
+    setLoading(false);
+  }
+};
+  
   const groupedItems = cartItems.reduce((acc, item) => {
     if (!acc[item.restaurantId]) {
       acc[item.restaurantId] = {

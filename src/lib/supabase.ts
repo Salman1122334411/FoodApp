@@ -119,6 +119,7 @@ export const searchMenuItems = async (searchTerm: string) => {
     .select(`
       id,
       label,
+      price,
       Restaurant:restaurantId (id, name, city)
     `)
     .or(`label.ilike.%${searchTerm}%`);

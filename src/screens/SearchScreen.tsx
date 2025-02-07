@@ -1,14 +1,29 @@
+
+
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { searchRestaurants,searchMenuItems } from '../lib/supabase'; // Import the search function
+import { searchRestaurants, searchMenuItems } from '../lib/supabase';
+import { useCart } from '../hooks/useCart'; // Import useCart hook
 
 export const SearchScreen = ({ navigation }: { navigation: any }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [restaurants, setRestaurants] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]); // State for recent searches
+  const { addToCart } = useCart(); // Get addToCart function from useCart
 
-  // Fetch restaurants when searchQuery changes
+  // Handle search submission
+  const handleSearchSubmit = () => {
+    if (searchQuery.trim()) {
+      setRecentSearches(prev => {
+        const updatedSearches = [searchQuery, ...prev.filter(item => item !== searchQuery)];
+        return updatedSearches.slice(0, 5); // Keep only the last 5 searches
+      });
+    }
+  };
+
+  // Fetch restaurants and menu items when searchQuery changes
   useEffect(() => {
     const fetchResults = async () => {
       if (searchQuery) {
@@ -27,11 +42,8 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
         setMenuItems([]);
       }
     };
-  
     fetchResults();
   }, [searchQuery]);
-  
-  
 
   return (
     <SafeAreaView style={styles.container}>
@@ -42,18 +54,54 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
           placeholder="Search for restaurants or dishes"
           value={searchQuery}
           onChangeText={setSearchQuery}
+          onSubmitEditing={handleSearchSubmit} // Add submit handler
         />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Search Results */}
+        {/* Restaurants Results */}
         {restaurants.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Search Results</Text>
+            <Text style={styles.sectionTitle}>Restaurants Available</Text>
             {restaurants.map((restaurant) => (
-              <TouchableOpacity key={restaurant.id} style={styles.cuisineItem}>
+              <TouchableOpacity
+                key={restaurant.id}
+                style={styles.cuisineItem}
+                onPress={() => {
+                  // Add any restaurant-specific navigation here if needed
+                }}
+              >
                 <Text style={styles.cuisineName}>{restaurant.name}</Text>
                 <Text style={styles.cuisineCount}>{restaurant.city}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Menu Items */}
+        {menuItems.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Menu Items</Text>
+            {menuItems.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={styles.cuisineItem}
+                onPress={() => {
+                  // Add menu item to cart
+                  addToCart({
+                    id: item.id,
+                    restaurantId: item.restaurantId || item.restaurant_id,
+                    restaurantName: item.Restaurant?.name || '',
+                    name: item.label,
+                    price: item.price,
+                    quantity: 1,
+                  });
+              
+                  navigation.navigate('Cart'); // Navigate to cart screen
+                }}
+              >
+                <Text style={styles.cuisineName}>{item.label}</Text>
+                <Text style={styles.cuisineCount}>{item.Restaurant?.name}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -63,26 +111,19 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recent Searches</Text>
           <View style={styles.recentSearches}>
-            {['Pizza', 'Burger', 'Sushi', 'Italian'].map((search, index) => (
-              <TouchableOpacity key={index} style={styles.recentSearchItem}>
+            {recentSearches.map((search, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.recentSearchItem}
+                onPress={() => setSearchQuery(search)} // Populate search query
+              >
                 <Text style={styles.recentSearchText}>{search}</Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
-        {menuItems.length > 0 && (
-  <View style={styles.section}>
-    <Text style={styles.sectionTitle}>Menu Items</Text>
-    {menuItems.map((item) => (
-      <TouchableOpacity key={item.id} style={styles.cuisineItem}>
-        <Text style={styles.cuisineName}>{item.label}</Text>
-        <Text style={styles.cuisineCount}>{item.Restaurant?.name}</Text>
-      </TouchableOpacity>
-    ))}
-  </View>
-)}
 
-        {/* Popular Cuisines */}
+        {/* Popular Cuisines (unchanged) */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Popular Cuisines</Text>
           {[

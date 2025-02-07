@@ -178,7 +178,7 @@ function NavigationContent() {
             }}
           />
           <Stack.Screen
-            name="Checkout"
+            name="CheckoutScreen"
             component={CheckoutScreen}
             options={{
               title: 'Checkout',

@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   googleButton: {
-    backgroundColor: '#DB4437', // Google red color
+    backgroundColor: '#FF6B6B', // Google red color
     padding: 15,
     borderRadius: 8,
     marginTop: 15,

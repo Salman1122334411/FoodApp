@@ -8,9 +8,10 @@ WebBrowser.maybeCompleteAuthSession();
 export const GoogleLogin = () => {
     // Initialize Google OAuth
     const [request, response, promptAsync] = Google.useAuthRequest({
-        clientId: "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com", // Replace with your Client ID
-        redirectUri: "https://auth.expo.io/@your-username/your-app-slug", // Replace with your Expo redirect URI
+        clientId: "273791797910-r47rpv5qf6s8itlnm796tm01sanefet5.apps.googleusercontent.com", // Replace with your Client ID
+        redirectUri: "https://gemhdxmocjbitbbrwssb.supabase.co/auth/v1/callback",
         scopes: ["profile", "email"],
+        useProxy: true, 
     });
 
     useEffect(() => {
