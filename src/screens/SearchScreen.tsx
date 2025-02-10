@@ -1,48 +1,70 @@
-
-
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { searchRestaurants, searchMenuItems } from '../lib/supabase';
-import { useCart } from '../hooks/useCart'; // Import useCart hook
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { searchRestaurants, searchMenuItems } from "../lib/supabase";
+import { useCart } from "../hooks/useCart"; // Import useCart hook
 
 export const SearchScreen = ({ navigation }: { navigation: any }) => {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [restaurants, setRestaurants] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [recentSearches, setRecentSearches] = useState<string[]>([]); // State for recent searches
   const { addToCart } = useCart(); // Get addToCart function from useCart
 
-  // Handle search submission
-  const handleSearchSubmit = () => {
-    if (searchQuery.trim()) {
-      setRecentSearches(prev => {
-        const updatedSearches = [searchQuery, ...prev.filter(item => item !== searchQuery)];
+  // Helper: add a term to recent searches
+  const addToRecentSearches = (term: string) => {
+    if (term.trim()) {
+      setRecentSearches((prev) => {
+        const updatedSearches = [term, ...prev.filter((item) => item !== term)];
         return updatedSearches.slice(0, 5); // Keep only the last 5 searches
       });
     }
   };
 
+  // Handle search submission from the text input
+  const handleSearchSubmit = () => {
+    if (searchQuery.trim()) {
+      addToRecentSearches(searchQuery);
+    }
+  };
+
   // Fetch restaurants and menu items when searchQuery changes
   useEffect(() => {
+    let isActive = true; // flag to prevent state update if component unmounts
     const fetchResults = async () => {
-      if (searchQuery) {
+      // Enforce a minimum search length if needed (e.g., 3 characters)
+      if (searchQuery.trim().length >=1) {
         try {
           const [restaurantResults, menuItemResults] = await Promise.all([
             searchRestaurants(searchQuery),
             searchMenuItems(searchQuery),
           ]);
-          setRestaurants(restaurantResults);
-          setMenuItems(menuItemResults);
+          if (isActive) {
+            setRestaurants(restaurantResults);
+            setMenuItems(menuItemResults);
+          }
         } catch (error) {
           console.error(error);
         }
       } else {
+        // Clear results when search is empty or too short
         setRestaurants([]);
         setMenuItems([]);
       }
     };
+
     fetchResults();
+
+    return () => {
+      isActive = false;
+    };
   }, [searchQuery]);
 
   return (
@@ -68,7 +90,8 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
                 key={restaurant.id}
                 style={styles.cuisineItem}
                 onPress={() => {
-                  // Add any restaurant-specific navigation here if needed
+                  addToRecentSearches(restaurant.name);
+                  navigation.navigate("RestaurantDetails", { restaurant });
                 }}
               >
                 <Text style={styles.cuisineName}>{restaurant.name}</Text>
@@ -87,17 +110,19 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
                 key={item.id}
                 style={styles.cuisineItem}
                 onPress={() => {
+                  // When a menu item is pressed, add its label to recent searches.
+                  addToRecentSearches(item.label);
                   // Add menu item to cart
                   addToCart({
                     id: item.id,
                     restaurantId: item.restaurantId || item.restaurant_id,
-                    restaurantName: item.Restaurant?.name || '',
+                    restaurantName: item.Restaurant?.name || "",
                     name: item.label,
                     price: item.price,
                     quantity: 1,
                   });
-              
-                  navigation.navigate('Cart'); // Navigate to cart screen
+                  // Navigate to the Cart screen
+                  navigation.navigate("Cart");
                 }}
               >
                 <Text style={styles.cuisineName}>{item.label}</Text>
@@ -107,30 +132,37 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
           </View>
         )}
 
-        {/* Recent Searches */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Searches</Text>
-          <View style={styles.recentSearches}>
-            {recentSearches.map((search, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.recentSearchItem}
-                onPress={() => setSearchQuery(search)} // Populate search query
-              >
-                <Text style={styles.recentSearchText}>{search}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+      {/* Recent Searches */}
+<View style={styles.section}>
+  <Text style={styles.sectionTitle}>Recent Searches</Text>
+  {recentSearches.length > 0 ? (
+    <View style={styles.recentSearches}>
+      {recentSearches.map((search, index) => (
+        <TouchableOpacity
+          key={index}
+          style={styles.recentSearchItem}
+          onPress={() => setSearchQuery(search)} // Populate search query when pressed
+        >
+          <Text style={styles.recentSearchText}>{search}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  ) : (
+    <Text style={styles.noRecentSearches}>
+    Fresh start. Find something tasty!
+    </Text>
+  )}
+</View>
 
-        {/* Popular Cuisines (unchanged) */}
+
+        {/* Popular Cuisines */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Popular Cuisines</Text>
           {[
-            { id: '1', name: 'Italian', count: '150+ places' },
-            { id: '2', name: 'Chinese', count: '120+ places' },
-            { id: '3', name: 'Japanese', count: '90+ places' },
-            { id: '4', name: 'Mexican', count: '80+ places' },
+            { id: "1", name: "Italian", count: "150+ places" },
+            { id: "2", name: "Chinese", count: "120+ places" },
+            { id: "3", name: "Japanese", count: "90+ places" },
+            { id: "4", name: "Mexican", count: "80+ places" },
           ].map((cuisine) => (
             <TouchableOpacity key={cuisine.id} style={styles.cuisineItem}>
               <Text style={styles.cuisineName}>{cuisine.name}</Text>
@@ -146,19 +178,19 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
   header: {
     padding: 16,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1F2937',
+    fontWeight: "bold",
+    color: "#1F2937",
     marginBottom: 16,
   },
   searchInput: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
     padding: 12,
     borderRadius: 8,
     fontSize: 16,
@@ -168,39 +200,47 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1F2937',
+    fontWeight: "bold",
+    color: "#1F2937",
     marginBottom: 12,
   },
   recentSearches: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
   recentSearchItem: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
   },
   recentSearchText: {
-    color: '#4B5563',
+    color: "#4B5563",
     fontSize: 14,
   },
   cuisineItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: "#E5E7EB",
   },
   cuisineName: {
     fontSize: 16,
-    color: '#1F2937',
+    color: "#1F2937",
   },
   cuisineCount: {
     fontSize: 14,
-    color: '#6B7280',
+    color: "#6B7280",
   },
+  noRecentSearches: {
+    marginTop: 10,
+    fontSize: 16,
+    color: 'gray',
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
+  
 });

@@ -102,32 +102,32 @@ export const getRestaurantsByFilters = async ({
   return data || [];
 };
 
+// In your supabase helper file
 export const searchRestaurants = async (searchTerm: string) => {
+  if (!searchTerm.trim()) return []; // Return empty array if search term is empty
   const { data, error } = await supabase
     .from('Restaurant')
     .select('*')
-    .or(`name.ilike.%${searchTerm}%`)
-    .order('rating', { ascending: false });
-
+    .ilike('name', `%${searchTerm}%`);
   if (error) throw error;
   return data || [];
 };
 
 export const searchMenuItems = async (searchTerm: string) => {
+  if (!searchTerm.trim()) return []; // Return empty array if search term is empty
   const { data, error } = await supabase
     .from('MenuItem')
     .select(`
       id,
       label,
       price,
-      Restaurant:restaurantId (id, name, city)
+      restaurantId,
+      Restaurant:Restaurant (id, name, city)
     `)
     .or(`label.ilike.%${searchTerm}%`);
-
   if (error) throw error;
   return data || [];
 };
-
 
 
 

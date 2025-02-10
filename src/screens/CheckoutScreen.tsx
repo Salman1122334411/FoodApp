@@ -26,25 +26,30 @@ type Address = {
   // add additional fields as needed
 };
 
+// In your navigation types file or at the top of CheckoutScreen
 type RootStackParamList = {
   Orders: undefined;
   CheckoutScreen: {
-    cartItems: any[];
-    total: number;
-    deliveryAddress: Address;
+    deliveryAddress: Address;  // Only keep what's truly needed
   };
 };
-
+// Simplify type definitions in CheckoutScreen
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'CheckoutScreen'>;
 type CheckoutScreenRouteProp = RouteProp<RootStackParamList, 'CheckoutScreen'>;
 
 export function CheckoutScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<CheckoutScreenRouteProp>();
-  const { cartItems, total, deliveryAddress } = route.params;
-  const { clearCart } = useCart(); // Access clearCart from cart hook
-  const [paymentMethod, setPaymentMethod] = useState('cod'); // Default to Cash on Delivery
+  const { deliveryAddress } = route.params;
+  
+  // Get cart state directly from Zustand store
+  const { cartItems, clearCart, getTotal } = useCart();
+  const total = getTotal();
+
+  // Keep existing payment method and loading states
+  const [paymentMethod, setPaymentMethod] = useState('cod');
   const [loading, setLoading] = useState(false);
+
 
   const handlePlaceOrder = async () => {
     try {
@@ -196,8 +201,7 @@ export function CheckoutScreen() {
       </View>
     </SafeAreaView>
   );
-}
-
+} 
 const styles = StyleSheet.create({
   container: {
     flex: 1,

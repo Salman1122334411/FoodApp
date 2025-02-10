@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -8,11 +8,11 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
-} from 'react-native';
-import { useCart } from '../hooks/useCart';
-import { supabase } from '../lib/supabase';
-import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+} from "react-native";
+import { useCart } from "../hooks/useCart";
+import { supabase } from "../lib/supabase";
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 
 interface Address {
   id: string;
@@ -51,119 +51,125 @@ export function CartScreen({ navigation }: { navigation: any }) {
 
     // Street Address validation
     if (!newAddress.street_address?.trim()) {
-      errors.street_address = 'Street address is required';
+      errors.street_address = "Street address is required";
     }
 
     // City validation
     if (!newAddress.city?.trim()) {
-      errors.city = 'City is required';
+      errors.city = "City is required";
     }
 
     // State validation
     if (!newAddress.state?.trim()) {
-      errors.state = 'State is required';
+      errors.state = "State is required";
     } else if (!/^[A-Za-z\s]{2,50}$/.test(newAddress.state.trim())) {
-      errors.state = 'State must be a valid name (e.g., Pakistan, India)';
+      errors.state = "State must be a valid name (e.g., Pakistan, India)";
     }
-    
+
     // Zip code validation
     if (!newAddress.zip_code?.trim()) {
-      errors.zip_code = 'Postal code is required';
+      errors.zip_code = "Postal code is required";
     } else if (!/^\d{5}(-\d{4})?$/.test(newAddress.zip_code.trim())) {
-      errors.zip_code = 'Invalid postal code format';
+      errors.zip_code = "Invalid postal code format";
     }
 
     if (!newAddress.phone_number?.trim()) {
-      errors.phone_number = 'Phone number is required';
+      errors.phone_number = "Phone number is required";
     } else if (!/^\d{11}$/.test(newAddress.phone_number.trim())) {
-      errors.phone_number = 'Phone number must be exactly 11 digits long';
+      errors.phone_number = "Phone number must be exactly 11 digits long";
     }
-    
-    
-    
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const fetchAddresses = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No user found');
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("No user found");
       const { data, error } = await supabase
-        .from('Addresses')
-        .select('id, label, street_address, city, state, zip_code, phone_number, latitude, longitude, is_default')
-        .eq('user_id', user.id)
-        .order('is_default', { ascending: false });
+        .from("Addresses")
+        .select(
+          "id, label, street_address, city, state, zip_code, phone_number, latitude, longitude, is_default"
+        )
+        .eq("user_id", user.id)
+        .order("is_default", { ascending: false });
 
       if (error) throw error;
       setAddresses(data || []);
       if (data && data.length > 0) {
-        const defaultAddress = data.find(addr => addr.is_default) || data[0];
+        const defaultAddress = data.find((addr) => addr.is_default) || data[0];
         setSelectedAddress(defaultAddress);
       }
     } catch (error) {
-      console.error('Error fetching addresses:', error);
-      Alert.alert('Error', 'Failed to load addresses');
+      console.error("Error fetching addresses:", error);
+      Alert.alert("Error", "Failed to load addresses");
     }
   };
 
-const handleCheckout = async () => {
-  try {
-    setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('No user found');
+  const handleCheckout = async () => {
+    try {
+      setLoading(true);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("No user found");
 
-    let deliveryAddress = selectedAddress;
+      let deliveryAddress = selectedAddress;
 
-    // Handle new address if enabled
-    if (useNewAddress) {
-      if (!validateAddress()) {
-        Alert.alert('Validation Error', 'Please correct the address information');
+      // Handle new address if enabled
+      if (useNewAddress) {
+        if (!validateAddress()) {
+          Alert.alert(
+            "Validation Error",
+            "Please correct the address information"
+          );
+          return;
+        }
+
+        // Insert new address
+        const { data: addressData, error: addressError } = await supabase
+          .from("Addresses")
+          .insert([
+            {
+              user_id: user.id,
+              label: newAddress.label || "Home",
+              street_address: newAddress.street_address,
+              city: newAddress.city,
+              state: newAddress.state,
+              zip_code: newAddress.zip_code,
+              phone_number: newAddress.phone_number,
+              latitude: newAddress.latitude || null,
+              longitude: newAddress.longitude || null,
+              is_default: newAddress.is_default || false,
+            },
+          ])
+          .select()
+          .single();
+
+        if (addressError) throw addressError;
+        deliveryAddress = addressData;
+      }
+
+      if (!deliveryAddress) {
+        Alert.alert("Error", "Please select or add a delivery address");
         return;
       }
 
-      // Insert new address
-      const { data: addressData, error: addressError } = await supabase
-        .from('Addresses')
-        .insert([{ 
-          user_id: user.id,
-          label: newAddress.label || 'Home',
-          street_address: newAddress.street_address,
-          city: newAddress.city,
-          state: newAddress.state,
-          zip_code: newAddress.zip_code,
-          phone_number: newAddress.phone_number,
-          latitude: newAddress.latitude || null,
-          longitude: newAddress.longitude || null,
-          is_default: newAddress.is_default || false
-        }])
-        .select()
-        .single();
-
-      if (addressError) throw addressError;
-      deliveryAddress = addressData;
+      // In CartScreen's handleCheckout function:
+      navigation.navigate("CheckoutScreen", {
+        deliveryAddress, // Only pass what's needed from local state
+      });
+    } catch (error) {
+      console.error("Checkout preparation error:", error);
+      Alert.alert("Error", "Failed to proceed to checkout");
+    } finally {
+      setLoading(false);
     }
+  };
 
-    if (!deliveryAddress) {
-      Alert.alert('Error', 'Please select or add a delivery address');
-      return;
-    }
-
-    // Navigate to CheckoutScreen with required data
-    navigation.navigate('CheckoutScreen', { 
-      cartItems,
-      deliveryAddress,
-      total
-    });
-
-  } catch (error) {
-    console.error('Checkout preparation error:', error);
-    Alert.alert('Error', 'Failed to proceed to checkout');
-  } finally {
-    setLoading(false);
-  }
-};
-  
   const groupedItems = cartItems.reduce((acc, item) => {
     if (!acc[item.restaurantId]) {
       acc[item.restaurantId] = {
@@ -175,7 +181,10 @@ const handleCheckout = async () => {
     return acc;
   }, {} as Record<string, { name: string; items: typeof cartItems }>);
 
-  const total = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const total = cartItems.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0
+  );
 
   if (loading) {
     return (
@@ -226,7 +235,7 @@ const handleCheckout = async () => {
         {/* Address Section */}
         <View style={styles.addressSection}>
           <Text style={styles.sectionTitle}>Delivery Address</Text>
-          
+
           <TouchableOpacity
             style={styles.addressOption}
             onPress={() => {
@@ -244,7 +253,8 @@ const handleCheckout = async () => {
                   key={address.id}
                   style={[
                     styles.addressCard,
-                    selectedAddress?.id === address.id && styles.selectedAddress,
+                    selectedAddress?.id === address.id &&
+                      styles.selectedAddress,
                   ]}
                   onPress={() => {
                     setSelectedAddress(address);
@@ -269,7 +279,10 @@ const handleCheckout = async () => {
           )}
 
           <TouchableOpacity
-            style={[styles.addressOption, useNewAddress && styles.selectedOption]}
+            style={[
+              styles.addressOption,
+              useNewAddress && styles.selectedOption,
+            ]}
             onPress={() => setUseNewAddress(true)}
           >
             <Ionicons name="add-circle-outline" size={24} color="#FF4B2B" />
@@ -280,43 +293,52 @@ const handleCheckout = async () => {
             <View style={styles.form}>
               <TextInput
                 style={[
-                  styles.input, 
-                  validationErrors.street_address && styles.inputError
+                  styles.input,
+                  validationErrors.street_address && styles.inputError,
                 ]}
                 value={newAddress.street_address}
                 onChangeText={(text) => {
                   setNewAddress({ ...newAddress, street_address: text });
-                  setValidationErrors({ ...validationErrors, street_address: undefined });
+                  setValidationErrors({
+                    ...validationErrors,
+                    street_address: undefined,
+                  });
                 }}
                 placeholder="Street Address"
               />
               {validationErrors.street_address && (
-                <Text style={styles.errorText}>{validationErrors.street_address}</Text>
+                <Text style={styles.errorText}>
+                  {validationErrors.street_address}
+                </Text>
               )}
-
-<TextInput
-  style={[
-    styles.input, 
-    validationErrors.phone_number && styles.inputError
-  ]}
-  value={newAddress.phone_number}
-  onChangeText={(text) => {
-    const cleanedText = text.replace(/\D/g, ''); // Remove non-numeric characters
-    setNewAddress({ ...newAddress, phone_number: cleanedText });
-    setValidationErrors({ ...validationErrors, phone_number: undefined });
-  }}
-  placeholder="Phone Number"
-  keyboardType="phone-pad"
-/>
-{validationErrors.phone_number && (
-  <Text style={styles.errorText}>{validationErrors.phone_number}</Text>
-)}
-
 
               <TextInput
                 style={[
-                  styles.input, 
-                  validationErrors.city && styles.inputError
+                  styles.input,
+                  validationErrors.phone_number && styles.inputError,
+                ]}
+                value={newAddress.phone_number}
+                onChangeText={(text) => {
+                  const cleanedText = text.replace(/\D/g, ""); // Remove non-numeric characters
+                  setNewAddress({ ...newAddress, phone_number: cleanedText });
+                  setValidationErrors({
+                    ...validationErrors,
+                    phone_number: undefined,
+                  });
+                }}
+                placeholder="Phone Number"
+                keyboardType="phone-pad"
+              />
+              {validationErrors.phone_number && (
+                <Text style={styles.errorText}>
+                  {validationErrors.phone_number}
+                </Text>
+              )}
+
+              <TextInput
+                style={[
+                  styles.input,
+                  validationErrors.city && styles.inputError,
                 ]}
                 value={newAddress.city}
                 onChangeText={(text) => {
@@ -331,13 +353,16 @@ const handleCheckout = async () => {
 
               <TextInput
                 style={[
-                  styles.input, 
-                  validationErrors.state && styles.inputError
+                  styles.input,
+                  validationErrors.state && styles.inputError,
                 ]}
                 value={newAddress.state}
                 onChangeText={(text) => {
                   setNewAddress({ ...newAddress, state: text.toUpperCase() });
-                  setValidationErrors({ ...validationErrors, state: undefined });
+                  setValidationErrors({
+                    ...validationErrors,
+                    state: undefined,
+                  });
                 }}
                 placeholder="State"
               />
@@ -347,20 +372,25 @@ const handleCheckout = async () => {
 
               <TextInput
                 style={[
-                  styles.input, 
-                  validationErrors.zip_code && styles.inputError
+                  styles.input,
+                  validationErrors.zip_code && styles.inputError,
                 ]}
                 value={newAddress.zip_code}
                 onChangeText={(text) => {
                   setNewAddress({ ...newAddress, zip_code: text });
-                  setValidationErrors({ ...validationErrors, zip_code: undefined });
+                  setValidationErrors({
+                    ...validationErrors,
+                    zip_code: undefined,
+                  });
                 }}
                 placeholder="Postal Code"
                 keyboardType="numeric"
                 maxLength={10}
               />
               {validationErrors.zip_code && (
-                <Text style={styles.errorText}>{validationErrors.zip_code}</Text>
+                <Text style={styles.errorText}>
+                  {validationErrors.zip_code}
+                </Text>
               )}
             </View>
           )}
@@ -379,7 +409,7 @@ const handleCheckout = async () => {
             disabled={loading || (!selectedAddress && !useNewAddress)}
           >
             <Text style={styles.checkoutButtonText}>
-              {loading ? 'Processing...' : 'Place Order'}
+              {loading ? "Processing..." : "Place Order"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -390,31 +420,31 @@ const handleCheckout = async () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
   scrollView: {
     flex: 1,
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   restaurantSection: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: "#E5E7EB",
   },
   restaurantName: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1F2937',
+    fontWeight: "bold",
+    color: "#1F2937",
     marginBottom: 12,
   },
   cartItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 8,
   },
   itemInfo: {
@@ -422,84 +452,84 @@ const styles = StyleSheet.create({
   },
   itemName: {
     fontSize: 16,
-    color: '#1F2937',
+    color: "#1F2937",
   },
   itemPrice: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#FF4B2B',
+    fontWeight: "600",
+    color: "#FF4B2B",
     marginTop: 4,
   },
   quantityContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
     borderRadius: 8,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   quantityButton: {
     padding: 8,
     width: 36,
-    alignItems: 'center',
+    alignItems: "center",
   },
   quantityButtonText: {
     fontSize: 18,
-    color: '#FF4B2B',
-    fontWeight: 'bold',
+    color: "#FF4B2B",
+    fontWeight: "bold",
   },
   quantity: {
     paddingHorizontal: 12,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   addressSection: {
     padding: 16,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1F2937',
+    fontWeight: "bold",
+    color: "#1F2937",
     marginBottom: 12,
   },
   addressOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 12,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: "#F9FAFB",
     borderRadius: 8,
     marginBottom: 8,
   },
   selectedOption: {
-    backgroundColor: '#FEE2E2',
+    backgroundColor: "#FEE2E2",
   },
   addressOptionText: {
     marginLeft: 8,
     fontSize: 16,
-    color: '#1F2937',
+    color: "#1F2937",
   },
   savedAddresses: {
     marginVertical: 12,
   },
   addressCard: {
     padding: 12,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: "#F9FAFB",
     borderRadius: 8,
     marginBottom: 8,
   },
   selectedAddress: {
-    backgroundColor: '#FEE2E2',
-    borderColor: '#FF4B2B',
+    backgroundColor: "#FEE2E2",
+    borderColor: "#FF4B2B",
     borderWidth: 1,
   },
   addressText: {
     fontSize: 14,
-    color: '#4B5563',
+    color: "#4B5563",
     marginBottom: 4,
   },
   defaultBadge: {
-    color: '#FF4B2B',
+    color: "#FF4B2B",
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: 4,
   },
   form: {
@@ -508,7 +538,7 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
@@ -516,41 +546,41 @@ const styles = StyleSheet.create({
   footer: {
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    backgroundColor: '#fff',
+    borderTopColor: "#E5E7EB",
+    backgroundColor: "#fff",
   },
   totalContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 12,
   },
   totalText: {
     fontSize: 18,
-    color: '#1F2937',
+    color: "#1F2937",
   },
   totalAmount: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FF4B2B',
+    fontWeight: "bold",
+    color: "#FF4B2B",
   },
   checkoutButton: {
-    backgroundColor: '#FF4B2B',
+    backgroundColor: "#FF4B2B",
     padding: 16,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
   checkoutButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   inputError: {
-    borderColor: 'red',
+    borderColor: "red",
     borderWidth: 1,
   },
   errorText: {
-    color: 'red',
+    color: "red",
     fontSize: 12,
     marginBottom: 5,
   },
