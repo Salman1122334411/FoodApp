@@ -1,5 +1,3 @@
-"use client"
-
 import { useEffect, useState } from "react"
 import {
   View,
@@ -63,25 +61,38 @@ export function HomeScreen() {
   const [loading, setLoading] = useState(true)
   const [userName, setUserName] = useState<string | null>(null)
   const [session, setSession] = useState<Session | null>(null)
-  const [searchQuery, setSearchQuery] = useState("")
   const [popularMenuItems, setPopularMenuItems] = useState<MenuItem[]>([]);
 
   useEffect(() => {
     const fetchPopularMenuItems = async () => {
       // Adjust the query as needed—for example, ordering by a popularity field or createdAt
       const { data, error } = await supabase
-        .from('MenuItem')
-        .select(`
-          id,
-          label,
-          price,
-          image,
-          restaurantId,
-          Restaurant:Restaurant (name)
-        `)
-        .order('createdAt', { ascending: false })
-        .limit(10); // fetch a few items so that we can later dedupe by restaurant
-
+  .from('MenuItem')
+  .select(`
+    id,
+    label,
+    price,
+    image,
+    restaurantId,
+    Restaurant:Restaurant (
+      id,
+      name,
+      chainName,
+      address,
+      latitude,
+      longitude,
+      cuisineType,
+      segment,
+      city,
+      area,
+      rating,
+      coverImage,
+      deliveryTime,
+      minimumOrder
+    )
+  `)
+  .order('createdAt', { ascending: false })
+  .limit(10);
       if (error) {
         console.error('Error fetching popular menu items', error);
         return;
@@ -114,7 +125,7 @@ export function HomeScreen() {
   }, [])
 
   const fetchUserProfile = async (userId: string) => {
-    const { data, error } = await supabase.from("profiles").select("name").eq("id", userId).single()
+    const { data, error } = await supabase.from("User").select("name").eq("id", userId).single()
 
     if (error) console.error("Error fetching user:", error.message)
     else setUserName(data?.name || "User")
@@ -164,22 +175,20 @@ export function HomeScreen() {
         </View>
 
         {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <View style={styles.searchBar}>
-            <Ionicons name="search-outline" size={20} color="#6B7280" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search for restaurants or dishes"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </View>
-        </View>
+        {/* (You can add your search bar here) */}
 
         {/* Offers Carousel */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.offersContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.offersContainer}
+        >
           {OFFERS.map((offer) => (
-            <TouchableOpacity key={offer.id} style={[styles.offerCard, { backgroundColor: offer.color }]}>
+            <TouchableOpacity
+              key={offer.id}
+              style={[styles.offerCard, { backgroundColor: offer.color }]}
+              onPress={() => navigation.navigate("Restaurants")}
+            >
               <View style={styles.offerContent}>
                 <Text style={styles.offerTitle}>{offer.title}</Text>
                 <Text style={styles.offerDescription}>{offer.description}</Text>
@@ -195,9 +204,13 @@ export function HomeScreen() {
         {/* Categories */}
         <View style={styles.categoriesSection}>
           <Text style={styles.sectionTitle}>Categories</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categories}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categories}
+          >
             {CATEGORIES.map((category) => (
-              <TouchableOpacity key={category.id} style={[styles.categoryItem, { backgroundColor: category.color }]}>
+              <TouchableOpacity key={category.id} style={styles.categoryItem}>
                 <Image source={category.icon} style={styles.categoryIcon} />
                 <Text style={styles.categoryName}>{category.name}</Text>
               </TouchableOpacity>
@@ -207,39 +220,39 @@ export function HomeScreen() {
 
         {/* Popular Dishes */}
         <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Popular Dishes</Text>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
-          contentContainerStyle={styles.popularDishes}
-        >
-          {popularMenuItems.map((dish) => (
-            <TouchableOpacity
-              key={dish.id}
-              style={styles.dishCard}
-              onPress={() => {
-                // Optionally, you can navigate to a dish detail screen
-                // or add the dish to the cart
-                // For example: navigation.navigate('DishDetails', { dish });
-                navigation.navigate("RestaurantDetails", { restaurant });
-              }}
-            >
-              <Image source={{ uri: dish.image }} style={styles.dishImage} />
-              <View style={styles.dishInfo}>
-                <Text style={styles.dishName}>{dish.label}</Text>
-                <Text style={styles.dishRestaurant}>{dish.Restaurant?.name}</Text>
-                <Text style={styles.dishPrice}>${dish.price.toFixed(2)}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+          <Text style={styles.sectionTitle}>Popular Dishes</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.popularDishes}
+          >
+            {popularMenuItems.map((dish) => (
+              <TouchableOpacity
+                key={dish.id}
+                style={styles.dishCard}
+                onPress={() => {
+                  navigation.navigate("RestaurantDetails", {
+                    restaurant: dish.Restaurant,
+                    menuItem: dish,
+                  });
+                }}
+              >
+                <Image source={{ uri: dish.image }} style={styles.dishImage} />
+                <View style={styles.dishInfo}>
+                  <Text style={styles.dishName}>{dish.label}</Text>
+                  <Text style={styles.dishRestaurant}>{dish.Restaurant?.name}</Text>
+                  <Text style={styles.dishPrice}>${dish.price.toFixed(2)}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
 
         {/* Featured Restaurants */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Featured Restaurants</Text>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation.navigate("Restaurants")}>
               <Text style={styles.seeAllButton}>See All</Text>
             </TouchableOpacity>
           </View>
@@ -291,8 +304,9 @@ export function HomeScreen() {
         </View>
       </ScrollView>
     </SafeAreaView>
-  )
+  );
 }
+
 
 const styles = StyleSheet.create({
   container: {
@@ -317,24 +331,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#6B7280",
     marginHorizontal: 4,
-  },
-  searchContainer: {
-    padding: 16,
-    backgroundColor: "#fff",
-  },
-  searchBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F3F4F6",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 16,
-    color: "#1F2937",
   },
   offersContainer: {
     padding: 16,
@@ -386,26 +382,27 @@ const styles = StyleSheet.create({
   },
   categories: {
     paddingTop: 16,
+    flexDirection: "row",
   },
+  // Updated category style to show the full image with curved corners
   categoryItem: {
     width: 100,
     height: 100,
     borderRadius: 16,
     marginRight: 16,
-    padding: 16,
-    alignItems: "center",
-    justifyContent: "center",
+    overflow: "hidden", // ensures the image corners are curved
   },
   categoryIcon: {
-    width: 40,
-    height: 40,
-    marginBottom: 8,
+    width: "100%",
+    height: "100%",
+    borderRadius: 16,
   },
   categoryName: {
     fontSize: 14,
     fontWeight: "600",
     color: "#1F2937",
     textAlign: "center",
+    marginTop: 4,
   },
   section: {
     padding: 16,
@@ -426,8 +423,10 @@ const styles = StyleSheet.create({
     color: "#FF4B2B",
     fontWeight: "600",
   },
+  // Added bottom margin to popular dishes to separate from featured restaurants
   popularDishes: {
     paddingTop: 8,
+    marginBottom: 24,
   },
   dishCard: {
     width: 200,
@@ -556,5 +555,6 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     marginTop: 24,
   },
-})
+});
+
 

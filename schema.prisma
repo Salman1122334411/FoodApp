@@ -1,11 +1,13 @@
 generator client {
   provider = "prisma-client-js"
 }
+
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
+
 enum UserRole {
   CUSTOMER
   DRIVER
@@ -13,15 +15,19 @@ enum UserRole {
   ADMIN
   SUPER_ADMIN
 }
+
 enum ApprovalStatus {
   PENDING
   APPROVED
   REJECTED
 }
+
 model User {
   id             String         @id @default(cuid())
   email          String         @unique
   name           String?
+  phoneNumber    String?        @unique
+  dob            DateTime?  // User's Date of Birth
   role           UserRole       @default(CUSTOMER)
   approvalStatus ApprovalStatus? // For DRIVER and VENDOR roles
   addresses      Address[]
@@ -31,6 +37,7 @@ model User {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 }
+
 model VendorProfile {
   id           String       @id @default(cuid())
   userId       String       @unique
@@ -42,6 +49,7 @@ model VendorProfile {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
+
 model Address {
   id            String    @id @default(cuid())
   userId        String
@@ -57,8 +65,10 @@ model Address {
   user          User      @relation(fields: [userId], references: [id])
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
   @@index([userId])
 }
+
 model Restaurant {
   id           String        @id @default(cuid())
   name         String
@@ -83,8 +93,10 @@ model Restaurant {
   isActive     Boolean       @default(true)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+
   @@index([vendorId])
 }
+
 model MenuItem {
   id           String      @id @default(cuid())
   label        String
@@ -93,11 +105,12 @@ model MenuItem {
   image        String?
   category     String
   restaurantId String
-  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id])
+  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade) 
   orderItems   OrderItem[]
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 }
+
 model Driver {
   id            String           @id @default(cuid())
   userId        String           @unique
@@ -118,6 +131,7 @@ model Driver {
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 }
+
 model DriverLocation {
   id        String   @id @default(cuid())
   driverId  String
@@ -125,8 +139,10 @@ model DriverLocation {
   lat       Float
   lng       Float
   timestamp DateTime @default(now())
+
   @@index([driverId, timestamp])
 }
+
 model DriverStats {
   id              String    @id @default(cuid())
   driverId        String    @unique
@@ -139,6 +155,7 @@ model DriverStats {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
+
 model Order {
   id              String      @id @default(cuid())
   userId          String
@@ -146,7 +163,9 @@ model Order {
   restaurantId    String
   restaurant      Restaurant  @relation(fields: [restaurantId], references: [id])
   status          String      @default("PENDING")
-  totalAmount     Float
+  specialInstructions String? 
+  paymentMethod    String       @default("cod")
+  totalAmount     Float        
   deliveryAddress String
   orderItems      OrderItem[]
   driverId        String?
@@ -165,6 +184,7 @@ model Order {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 }
+
 model OrderItem {
   id         String   @id @default(cuid())
   orderId    String
@@ -178,4 +198,3 @@ model OrderItem {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
-

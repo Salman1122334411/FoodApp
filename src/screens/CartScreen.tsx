@@ -13,7 +13,7 @@ import { useCart } from "../hooks/useCart";
 import { supabase } from "../lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-
+import cuid from 'cuid'; 
 interface Address {
   id: string;
   label: string;
@@ -90,12 +90,12 @@ export function CartScreen({ navigation }: { navigation: any }) {
       } = await supabase.auth.getUser();
       if (!user) throw new Error("No user found");
       const { data, error } = await supabase
-        .from("Addresses")
+        .from("Address")
         .select(
-          "id, label, street_address, city, state, zip_code, phone_number, latitude, longitude, is_default"
+          "id, label, streetAddress, city, state, zipCode, phoneNumber, latitude, longitude, isDefault"
         )
-        .eq("user_id", user.id)
-        .order("is_default", { ascending: false });
+        .eq("userId", user.id)
+        .order("isDefault", { ascending: false });
 
       if (error) throw error;
       setAddresses(data || []);
@@ -128,22 +128,24 @@ export function CartScreen({ navigation }: { navigation: any }) {
           );
           return;
         }
-
+        const currentTimestamp = new Date().toISOString();
         // Insert new address
         const { data: addressData, error: addressError } = await supabase
-          .from("Addresses")
+          .from("Address")
           .insert([
             {
-              user_id: user.id,
+              id:cuid(),
+              userId: user.id,
               label: newAddress.label || "Home",
-              street_address: newAddress.street_address,
+              streetAddress: newAddress.street_address,
               city: newAddress.city,
               state: newAddress.state,
-              zip_code: newAddress.zip_code,
-              phone_number: newAddress.phone_number,
+              zipCode: newAddress.zip_code,
+              phoneNumber: newAddress.phone_number,
               latitude: newAddress.latitude || null,
               longitude: newAddress.longitude || null,
-              is_default: newAddress.is_default || false,
+              isDefault: newAddress.is_default || false,
+              updatedAt: currentTimestamp,
             },
           ])
           .select()

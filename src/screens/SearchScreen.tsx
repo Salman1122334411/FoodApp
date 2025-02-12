@@ -40,7 +40,7 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
     let isActive = true; // flag to prevent state update if component unmounts
     const fetchResults = async () => {
       // Enforce a minimum search length if needed (e.g., 3 characters)
-      if (searchQuery.trim().length >=1) {
+      if (searchQuery.trim().length >= 1) {
         try {
           const [restaurantResults, menuItemResults] = await Promise.all([
             searchRestaurants(searchQuery),
@@ -91,6 +91,7 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
                 style={styles.cuisineItem}
                 onPress={() => {
                   addToRecentSearches(restaurant.name);
+                  console.log(restaurant);
                   navigation.navigate("RestaurantDetails", { restaurant });
                 }}
               >
@@ -105,55 +106,57 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
         {menuItems.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Menu Items</Text>
-            {menuItems.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.cuisineItem}
-                onPress={() => {
-                  // When a menu item is pressed, add its label to recent searches.
-                  addToRecentSearches(item.label);
-                  // Add menu item to cart
-                  addToCart({
-                    id: item.id,
-                    restaurantId: item.restaurantId || item.restaurant_id,
-                    restaurantName: item.Restaurant?.name || "",
-                    name: item.label,
-                    price: item.price,
-                    quantity: 1,
-                  });
-                  // Navigate to the Cart screen
-                  navigation.navigate("Cart");
-                }}
-              >
-                <Text style={styles.cuisineName}>{item.label}</Text>
-                <Text style={styles.cuisineCount}>{item.Restaurant?.name}</Text>
-              </TouchableOpacity>
-            ))}
+            {menuItems.map((item) => {
+              // Use the full restaurant object if available; otherwise, fallback to an object with the id.
+              const restaurant = item.Restaurant || {
+                id: item.restaurantId || item.restaurant_id,
+              };
+
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.cuisineItem}
+                  onPress={() => {
+                    addToRecentSearches(item.label);
+                    navigation.navigate("RestaurantDetails", {
+                      restaurant, // Passing the restaurant object just like in restaurant search.
+                      selectedMenuItem: item, // Optionally, pass the menu item so the screen can highlight it.
+                    });
+                    console.log(restaurant);
+                  }}
+                 
+                >
+                  <Text style={styles.cuisineName}>{item.label}</Text>
+                  <Text style={styles.cuisineCount}>
+                    {restaurant.name || ""}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
 
-      {/* Recent Searches */}
-<View style={styles.section}>
-  <Text style={styles.sectionTitle}>Recent Searches</Text>
-  {recentSearches.length > 0 ? (
-    <View style={styles.recentSearches}>
-      {recentSearches.map((search, index) => (
-        <TouchableOpacity
-          key={index}
-          style={styles.recentSearchItem}
-          onPress={() => setSearchQuery(search)} // Populate search query when pressed
-        >
-          <Text style={styles.recentSearchText}>{search}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  ) : (
-    <Text style={styles.noRecentSearches}>
-    Fresh start. Find something tasty!
-    </Text>
-  )}
-</View>
-
+        {/* Recent Searches */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Recent Searches</Text>
+          {recentSearches.length > 0 ? (
+            <View style={styles.recentSearches}>
+              {recentSearches.map((search, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.recentSearchItem}
+                  onPress={() => setSearchQuery(search)} // Populate search query when pressed
+                >
+                  <Text style={styles.recentSearchText}>{search}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.noRecentSearches}>
+              Fresh start. Find something tasty!
+            </Text>
+          )}
+        </View>
 
         {/* Popular Cuisines */}
         <View style={styles.section}>
@@ -238,9 +241,8 @@ const styles = StyleSheet.create({
   noRecentSearches: {
     marginTop: 10,
     fontSize: 16,
-    color: 'gray',
-    fontStyle: 'italic',
-    textAlign: 'center',
+    color: "gray",
+    fontStyle: "italic",
+    textAlign: "center",
   },
-  
 });

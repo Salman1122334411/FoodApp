@@ -28,6 +28,8 @@ export function EditProfileScreen() {
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [fullNameError, setFullNameError] = useState('');
+  const [phoneNumberError, setPhoneNumberError] = useState('');
   const navigation = useNavigation();
 
   useEffect(() => {
@@ -41,7 +43,7 @@ export function EditProfileScreen() {
       if (!user) throw new Error('No user found');
 
       const { data, error } = await supabase
-        .from('profiles')
+        .from('User')
         .select('*')
         .eq('id', user.id)
         .single();
@@ -78,8 +80,6 @@ export function EditProfileScreen() {
       if (!result.canceled) {
         const imageUri = result.assets[0].uri;
         setAvatarUri(imageUri);
-
-        // Upload image to Supabase or handle it here
         console.log('Image selected from library:', imageUri);
       }
     } catch (error) {
@@ -105,8 +105,6 @@ export function EditProfileScreen() {
       if (!result.canceled) {
         const photoUri = result.assets[0].uri;
         setAvatarUri(photoUri);
-
-        // Upload photo to Supabase or handle it here
         console.log('Photo taken:', photoUri);
       }
     } catch (error) {
@@ -120,24 +118,36 @@ export function EditProfileScreen() {
       'Profile Picture',
       'Choose an option',
       [
-        {
-          text: 'Take Photo',
-          onPress: handleTakePhoto,
-        },
-        {
-          text: 'Choose from Library',
-          onPress: handleUploadImage,
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Take Photo', onPress: handleTakePhoto },
+        { text: 'Choose from Library', onPress: handleUploadImage },
+        { text: 'Cancel', style: 'cancel' },
       ],
       { cancelable: true }
     );
   };
 
   const handleUpdateProfile = async () => {
+    let valid = true;
+    // Validate full name: allow only letters and spaces
+    const nameRegex = /^[A-Za-z\s]+$/;
+    if (!nameRegex.test(fullName)) {
+      setFullNameError('Name should contain only letters and spaces.');
+      valid = false;
+    } else {
+      setFullNameError('');
+    }
+
+    // Validate phone number: exactly 11 digits
+    const phoneRegex = /^\d{11}$/;
+    if (!phoneRegex.test(phoneNumber)) {
+      setPhoneNumberError('Phone number must be exactly 11 digits.');
+      valid = false;
+    } else {
+      setPhoneNumberError('');
+    }
+
+    if (!valid) return;
+
     try {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
@@ -147,12 +157,12 @@ export function EditProfileScreen() {
         id: user.id,
         name: fullName,
         phoneNumber: phoneNumber,
-        avatar_url: avatarUri, // Update avatar URL in the profile
-        updated_at: new Date().toISOString(),
+        avatar_url: avatarUri,
+        updatedAt: new Date().toISOString(),
       };
 
       const { error } = await supabase
-        .from('profiles')
+        .from('User')
         .update(updates)
         .eq('id', user.id);
 
@@ -179,15 +189,9 @@ export function EditProfileScreen() {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.profileImageContainer}
-          onPress={handleProfilePicPress}
-        >
+        <TouchableOpacity style={styles.profileImageContainer} onPress={handleProfilePicPress}>
           {avatarUri ? (
-            <Image
-              source={{ uri: avatarUri }}
-              style={styles.profileImage}
-            />
+            <Image source={{ uri: avatarUri }} style={styles.profileImage} />
           ) : (
             <View style={[styles.profileImage, styles.profileImagePlaceholder]}>
               <Ionicons name="person" size={40} color="#FF4B2B" />
@@ -209,6 +213,7 @@ export function EditProfileScreen() {
             placeholder="Enter your full name"
             placeholderTextColor="#9CA3AF"
           />
+          {fullNameError ? <Text style={styles.errorText}>{fullNameError}</Text> : null}
         </View>
 
         <View style={styles.inputGroup}>
@@ -216,18 +221,15 @@ export function EditProfileScreen() {
           <TextInput
             style={styles.input}
             value={phoneNumber}
-            onChangeText={setPhoneNumber}
+            onChangeText={(text) => setPhoneNumber(text.replace(/\D/g, ''))}
             placeholder="Enter your phone number"
             placeholderTextColor="#9CA3AF"
             keyboardType="phone-pad"
           />
+          {phoneNumberError ? <Text style={styles.errorText}>{phoneNumberError}</Text> : null}
         </View>
 
-        <TouchableOpacity
-          style={styles.saveButton}
-          onPress={handleUpdateProfile}
-          disabled={loading}
-        >
+        <TouchableOpacity style={styles.saveButton} onPress={handleUpdateProfile} disabled={loading}>
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
@@ -240,80 +242,31 @@ export function EditProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  header: {
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  profileImageContainer: {
-    position: 'relative',
-    marginBottom: 16,
-  },
-  profileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-  },
-  profileImagePlaceholder: {
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
+  header: { alignItems: 'center', marginVertical: 20 },
+  profileImageContainer: { position: 'relative' },
+  profileImage: { width: 120, height: 120, borderRadius: 60 },
+  profileImagePlaceholder: { backgroundColor: '#eee', alignItems: 'center', justifyContent: 'center' },
   editIconContainer: {
     position: 'absolute',
-    right: 0,
     bottom: 0,
+    right: 0,
     backgroundColor: '#FF4B2B',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#fff',
+    borderRadius: 20,
+    padding: 4,
   },
-  form: {
-    padding: 16,
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  input: {
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    fontSize: 16,
-    backgroundColor: '#F9FAFB',
-    color: '#000',
-  },
+  form: { paddingHorizontal: 20 },
+  inputGroup: { marginBottom: 16 },
+  label: { fontSize: 16, marginBottom: 4, color: '#333' },
+  input: { borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 8, fontSize: 16, color: '#333' },
+  errorText: { color: 'red', fontSize: 12, marginTop: 4 },
   saveButton: {
-    alignItems: 'center',
     backgroundColor: '#FF4B2B',
     padding: 16,
-    borderRadius: 12,
-    marginTop: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 20,
   },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  saveButtonText: { color: '#fff', fontSize: 18, fontWeight: '600' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 });

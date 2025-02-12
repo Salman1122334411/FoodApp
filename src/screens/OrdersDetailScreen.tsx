@@ -1,3 +1,4 @@
+import React from 'react';
 import {
   View,
   Text,
@@ -17,17 +18,16 @@ interface OrderItem {
   quantity: number;
 }
 
+interface Restaurant {
+  id: string;
+  name: string;
+}
+
 interface Order {
   id: string;
   userId: string;
   restaurantId: string;
-  status:
-    | "PENDING"
-    | "CONFIRMED"
-    | "PREPARING"
-    | "READY"
-    | "DELIVERED"
-    | "CANCELLED";
+  status: "PENDING" | "CONFIRMED" | "PREPARING" | "READY" | "DELIVERED" | "CANCELLED";
   totalAmount: number;
   deliveryAddress: string;
   driverId: string | null;
@@ -41,7 +41,7 @@ interface Order {
   createdAt: string;
   updatedAt: string;
   orderItems: OrderItem[];
-  restaurant: string;
+  restaurant?: Restaurant;
 }
 
 export function OrderDetailsScreen({
@@ -72,18 +72,13 @@ export function OrderDetailsScreen({
     { status: "DELIVERED", label: "Delivered", icon: "checkmark-done-circle-outline" },
   ];
 
-  // Compute which step is current based on order.status
   const currentStepIndex = steps.findIndex((step) => step.status === order.status);
-
-  // If the order is CONFIRMED, we want to show 0% progress (and red), otherwise compute normally.
   const computedProgress =
     order.status === "CANCELLED"
       ? 0
       : currentStepIndex !== -1
       ? Math.round((currentStepIndex / (steps.length - 1)) * 100)
       : 0;
-
-  // Choose progress color: red if CONFIRMED, otherwise blue.
   const progressColor = order.status === "CONFIRMED" ? "#FF0000" : "#4A90E2";
 
   const getStatusSteps = () => {
@@ -121,7 +116,7 @@ export function OrderDetailsScreen({
       </View>
 
       <View style={styles.timeline}>
-        {getStatusSteps().map((step, index) => (
+        {getStatusSteps().map((step) => (
           <View key={step.status} style={styles.timelineItem}>
             <View style={styles.timelineLeft}>
               <View
@@ -137,14 +132,12 @@ export function OrderDetailsScreen({
                   color={step.isCurrent ? "#fff" : "#9CA3AF"}
                 />
               </View>
-              {index < steps.length - 1 && (
-                <View
-                  style={[
-                    styles.timelineLine,
-                    step.isCompleted && styles.timelineLineCompleted,
-                  ]}
-                />
-              )}
+              <View
+                style={[
+                  styles.timelineLine,
+                  step.isCompleted && styles.timelineLineCompleted,
+                ]}
+              />
             </View>
             <Text
               style={[
@@ -158,12 +151,14 @@ export function OrderDetailsScreen({
         ))}
       </View>
 
-      {/* Additional Order Details Below (Restaurant, Delivery Address, Order Items, etc.) */}
+      {/* Restaurant and Delivery Address */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Restaurant</Text>
         <View style={styles.restaurantInfo}>
           <Ionicons name="restaurant-outline" size={24} color="#4B5563" />
-          <Text style={styles.restaurantName}>{order.restaurant}</Text>
+          <Text style={styles.restaurantName}>
+            {order.restaurant ? order.restaurant.name : 'Restaurant'}
+          </Text>
         </View>
       </View>
       <View style={styles.section}>
@@ -173,8 +168,12 @@ export function OrderDetailsScreen({
           <Text style={styles.address}>
             {order.deliveryAddress
               ? (() => {
-                  const address = JSON.parse(order.deliveryAddress);
-                  return `${address.label} - ${address.street_address}, ${address.city}, ${address.state}`;
+                  try {
+                    const address = JSON.parse(order.deliveryAddress);
+                    return `${address.label} - ${address.street_address}, ${address.city}, ${address.state}`;
+                  } catch {
+                    return order.deliveryAddress;
+                  }
                 })()
               : "No address provided"}
           </Text>
@@ -208,6 +207,7 @@ export function OrderDetailsScreen({
     </ScrollView>
   );
 }
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,

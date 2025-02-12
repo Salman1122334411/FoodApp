@@ -115,6 +115,7 @@ export const searchRestaurants = async (searchTerm: string) => {
 
 export const searchMenuItems = async (searchTerm: string) => {
   if (!searchTerm.trim()) return []; // Return empty array if search term is empty
+
   const { data, error } = await supabase
     .from('MenuItem')
     .select(`
@@ -122,13 +123,13 @@ export const searchMenuItems = async (searchTerm: string) => {
       label,
       price,
       restaurantId,
-      Restaurant:Restaurant (id, name, city)
+      Restaurant:Restaurant(*)
     `)
     .or(`label.ilike.%${searchTerm}%`);
+
   if (error) throw error;
   return data || [];
 };
-
 
 
 

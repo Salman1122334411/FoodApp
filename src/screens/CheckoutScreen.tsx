@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase'; // Import Supabase client
 import { useCart } from '../hooks/useCart';
+import cuid from 'cuid'; // Import cuid to generate unique IDs
 
 type Address = {
   id: string;
@@ -26,14 +27,13 @@ type Address = {
   // add additional fields as needed
 };
 
-// In your navigation types file or at the top of CheckoutScreen
 type RootStackParamList = {
   Orders: undefined;
   CheckoutScreen: {
-    deliveryAddress: Address;  // Only keep what's truly needed
+    deliveryAddress: Address; // Only keep what's truly needed
   };
 };
-// Simplify type definitions in CheckoutScreen
+
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'CheckoutScreen'>;
 type CheckoutScreenRouteProp = RouteProp<RootStackParamList, 'CheckoutScreen'>;
 
@@ -42,14 +42,11 @@ export function CheckoutScreen() {
   const route = useRoute<CheckoutScreenRouteProp>();
   const { deliveryAddress } = route.params;
   
-  // Get cart state directly from Zustand store
   const { cartItems, clearCart, getTotal } = useCart();
   const total = getTotal();
 
-  // Keep existing payment method and loading states
   const [paymentMethod, setPaymentMethod] = useState('cod');
   const [loading, setLoading] = useState(false);
-
 
   const handlePlaceOrder = async () => {
     try {
@@ -76,35 +73,49 @@ export function CheckoutScreen() {
       for (const restaurantId of Object.keys(restaurantGroups)) {
         const group = restaurantGroups[restaurantId];
 
-        // Create order record
+        // Generate a random order ID using cuid
+        const orderId = cuid();
+        // Get current timestamp in ISO format
+        const currentTimestamp = new Date().toISOString();
+
+        // Create the delivery address string from the selected address
+        const deliveryAddressString = deliveryAddress
+        ? `${deliveryAddress.streetAddress}, ${deliveryAddress.city}, ${deliveryAddress.state}, ${deliveryAddress.zipCode}`
+        : "";
+
+        // Create order record with the generated orderId and current timestamp for updatedAt
         const { data: orderData, error: orderError } = await supabase
-        
-          .from('Order') // Adjust table name if needed (e.g., 'orders')
+          .from('Order') // Adjust table name if needed
           .insert([{
+            id: orderId,
             userId: user.id,
             restaurantId: restaurantId,
             status: 'PENDING',
             totalAmount: group.total,
-            deliveryAddress: deliveryAddress, // Storing the entire address object or just a formatted string as required
-            payment_method: paymentMethod,
+            deliveryAddress: deliveryAddressString, // now sending the formatted string
+            paymentMethod: paymentMethod,
+            updatedAt: currentTimestamp,
           }])
           .select('id')
           .single();
-          console.log("Order Payload:", orderData);
+          
+        console.log("Order Payload:", orderData);
         if (orderError) throw orderError;
-
-        // Map order items for the order
+        
+        // Map order items for the order using the generated orderId
         const orderItems = group.items.map((item: any) => ({
-          orderid: orderData.id,
-          menuitemid: item.id,
+          id: cuid(),
+          orderId: orderId,
+          menuItemId: item.id,
           quantity: item.quantity,
           price: item.price,
           name: item.name,
+          updatedAt: currentTimestamp,
         }));
 
         // Insert order items
         const { error: itemsError } = await supabase
-          .from('OrderItem') // Adjust table name if needed (e.g., 'order_items')
+          .from('OrderItem') // Adjust table name if needed
           .insert(orderItems);
 
         if (itemsError) throw itemsError;
@@ -121,7 +132,6 @@ export function CheckoutScreen() {
     }
   };
 
-  // Show a loading indicator if the order is being placed
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -201,7 +211,9 @@ export function CheckoutScreen() {
       </View>
     </SafeAreaView>
   );
-} 
+}
+
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,

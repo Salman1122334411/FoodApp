@@ -46,7 +46,7 @@ export function ProfileScreen() {
       if (!user) throw new Error('No user found');
 
       const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
+        .from('User')
         .select('*')
         .eq('id', user.id)
         .single();
@@ -55,10 +55,10 @@ export function ProfileScreen() {
       setProfile(profileData);
 
       const { data: addressData, error: addressError } = await supabase
-        .from('Addresses')
+        .from('Address')
         .select('*')
-        .eq('user_id', user.id)
-        .order('is_default', { ascending: false });
+        .eq('userId', user.id)
+        .order('isDefault', { ascending: false });
 
       if (addressError) throw addressError;
       setAddresses(addressData || []);
@@ -104,14 +104,14 @@ export function ProfileScreen() {
 
       // First, remove default from all addresses
       await supabase
-        .from('Addresses')
-        .update({ is_default: false })
-        .eq('user_id', user.id);
+        .from('Address')
+        .update({ isDefault: false })
+        .eq('userId', user.id);
 
       // Set the selected address as default
       const { error } = await supabase
-        .from('Addresses')
-        .update({ is_default: true })
+        .from('Address')
+        .update({ isDefault: true })
         .eq('id', addressId);
 
       if (error) throw error;
@@ -128,7 +128,7 @@ export function ProfileScreen() {
   const deleteAddress = async (addressId: string) => {
     try {
       const { error } = await supabase
-        .from('Addresses')
+        .from('Address')
         .delete()
         .eq('id', addressId);
 
@@ -223,11 +223,11 @@ export function ProfileScreen() {
                   color={address.is_default ? "#FF4B2B" : "#6B7280"} 
                 />
                 <Text style={styles.addressText}>
-                  {address.street_address}, {address.city}
+                  {address.streetAddress}, {address.city}
                 </Text>
               </View>
               <Text style={styles.addressSubtext}>
-                {address.state}, {address.zip_code}
+                {address.state}, {address.zipCode}
               </Text>
             </View>
             

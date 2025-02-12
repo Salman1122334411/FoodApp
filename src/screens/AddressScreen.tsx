@@ -14,16 +14,16 @@ import { Ionicons } from '@expo/vector-icons';
 
 interface Address {
   id: string;
-  user_id: string;
+  userId: string;
   label: string;
-  street_address: string;
+  streetAddress: string;
   city: string;
   state: string;
-  zip_code: string;
-  phone_number: string;
+  zipCode: string;
+  phoneNumber: string;
   latitude?: number;
   longitude?: number;
-  is_default: boolean;
+  isDefault: boolean;
 }
 
 export function AddressScreen() {
@@ -50,8 +50,8 @@ export function AddressScreen() {
       errors.label = 'Label is required';
     }
 
-    if (!newAddress.street_address?.trim()) {
-      errors.street_address = 'Street address is required';
+    if (!newAddress.streetAddress?.trim()) {
+      errors.streetAddress = 'Street address is required';
     }
 
     if (!newAddress.city?.trim()) {
@@ -64,17 +64,16 @@ export function AddressScreen() {
       errors.state = 'State must be a valid country name';
     }
 
-    if (!newAddress.zip_code?.trim()) {
-      errors.zip_code = 'Postal code is required';
-    } else if (!/^\d{5}(-\d{4})?$/.test(newAddress.zip_code.trim())) {
-      errors.zip_code = 'Invalid postal code format';
+    if (!newAddress.zipCode?.trim()) {
+      errors.zipCode = 'Postal code is required';
+    } else if (!/^\d{5}(-\d{4})?$/.test(newAddress.zipCode.trim())) {
+      errors.zipCode = 'Invalid postal code format';
     }
 
-
-    if (!newAddress.phone_number?.trim()) {
-      errors.phone_number = 'Phone number is required';
-    } else if (!/^\d{11}$/.test(newAddress.phone_number.trim())) {
-      errors.phone_number = 'Phone number must be exactly 11 digits';
+    if (!newAddress.phoneNumber?.trim()) {
+      errors.phoneNumber = 'Phone number is required';
+    } else if (!/^\d{11}$/.test(newAddress.phoneNumber.trim())) {
+      errors.phoneNumber = 'Phone number must be exactly 11 digits';
     }
 
     setValidationErrors(errors);
@@ -124,12 +123,12 @@ export function AddressScreen() {
           {validationErrors.label && <Text style={styles.errorText}>{validationErrors.label}</Text>}
 
           <TextInput
-            style={[styles.input, validationErrors.street_address && styles.inputError]}
-            value={newAddress.street_address}
-            onChangeText={(text) => setNewAddress({ ...newAddress, street_address: text })}
+            style={[styles.input, validationErrors.streetAddress && styles.inputError]}
+            value={newAddress.streetAddress}
+            onChangeText={(text) => setNewAddress({ ...newAddress, streetAddress: text })}
             placeholder="Street Address"
           />
-          {validationErrors.street_address && <Text style={styles.errorText}>{validationErrors.street_address}</Text>}
+          {validationErrors.streetAddress && <Text style={styles.errorText}>{validationErrors.streetAddress}</Text>}
 
           <TextInput
             style={[styles.input, validationErrors.city && styles.inputError]}
@@ -139,41 +138,38 @@ export function AddressScreen() {
           />
           {validationErrors.city && <Text style={styles.errorText}>{validationErrors.city}</Text>}
 
-         <TextInput
-        style={[
-                           styles.input, 
-                           validationErrors.state && styles.inputError
-                         ]}
-                         value={newAddress.state}
-                         onChangeText={(text) => {
-                           setNewAddress({ ...newAddress, state: text.toUpperCase() });
-                           setValidationErrors({ ...validationErrors, state: undefined });
-                         }}
-                         placeholder="State"
-                       />
+          <TextInput
+            style={[styles.input, validationErrors.state && styles.inputError]}
+            value={newAddress.state}
+            onChangeText={(text) => {
+              setNewAddress({ ...newAddress, state: text.toUpperCase() });
+              setValidationErrors({ ...validationErrors, state: undefined });
+            }}
+            placeholder="State"
+          />
           {validationErrors.state && <Text style={styles.errorText}>{validationErrors.state}</Text>}
 
           <TextInput
-            style={[styles.input, validationErrors.zip_code && styles.inputError]}
-            value={newAddress.zip_code}
-            onChangeText={(text) => setNewAddress({ ...newAddress, zip_code: text })}
+            style={[styles.input, validationErrors.zipCode && styles.inputError]}
+            value={newAddress.zipCode}
+            onChangeText={(text) => setNewAddress({ ...newAddress, zipCode: text })}
             placeholder="Zip Code"
             keyboardType="numeric"
           />
-          {validationErrors.zip_code && <Text style={styles.errorText}>{validationErrors.zip_code}</Text>}
+          {validationErrors.zipCode && <Text style={styles.errorText}>{validationErrors.zipCode}</Text>}
 
           <TextInput
-            style={[styles.input, validationErrors.phone_number && styles.inputError]}
-            value={newAddress.phone_number}
+            style={[styles.input, validationErrors.phoneNumber && styles.inputError]}
+            value={newAddress.phoneNumber}
             onChangeText={(text) => {
               const cleanedText = text.replace(/\D/g, '');
-              setNewAddress({ ...newAddress, phone_number: cleanedText });
-              setValidationErrors({ ...validationErrors, phone_number: undefined });
+              setNewAddress({ ...newAddress, phoneNumber: cleanedText });
+              setValidationErrors({ ...validationErrors, phoneNumber: undefined });
             }}
             placeholder="Phone Number"
             keyboardType="phone-pad"
           />
-          {validationErrors.phone_number && <Text style={styles.errorText}>{validationErrors.phone_number}</Text>}
+          {validationErrors.phoneNumber && <Text style={styles.errorText}>{validationErrors.phoneNumber}</Text>}
 
           <TouchableOpacity style={styles.button} onPress={handleAddAddress}>
             <Text style={styles.buttonText}>Add Address</Text>
@@ -185,15 +181,15 @@ export function AddressScreen() {
         <View key={address.id} style={styles.addressCard}>
           <View style={styles.addressInfo}>
             <Text style={styles.addressText}>
-              {address.street_address}, {address.city}, {address.state} {address.zip_code}
+              {address.streetAddress}, {address.city}, {address.state} {address.zipCode}
             </Text>
-            <Text style={styles.addressText}>Phone: {address.phone_number}</Text>
-            {address.is_default && (
+            <Text style={styles.addressText}>Phone: {address.phoneNumber}</Text>
+            {address.isDefault && (
               <Text style={styles.defaultBadge}>Default</Text>
             )}
           </View>
           <View style={styles.addressActions}>
-            {!address.is_default && (
+            {!address.isDefault && (
               <TouchableOpacity 
                 onPress={() => setDefaultAddress(address.id)}
                 style={styles.addressButton}
@@ -213,6 +209,7 @@ export function AddressScreen() {
     </ScrollView>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {

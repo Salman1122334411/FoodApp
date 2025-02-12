@@ -1,26 +1,25 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
+import cuid from 'cuid'; // Import the cuid package
 
 interface Address {
   id: string;
-  user_id: string;
+  userId: string;
   label: string;
-  street_address: string;
+  streetAddress: string;
   city: string;
   state: string;
-  zip_code: string;
-  phone_number: string;
+  zipCode: string;
+  phoneNumber: string;
   latitude?: number;
   longitude?: number;
-  is_default: boolean;
-  created_at: string;
-  updated_at: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface AddressState {
-
   addresses: Address[];
-
   loading: boolean;
   fetchAddresses: () => Promise<void>;
   addAddress: (newAddress: Partial<Address>) => Promise<void>;
@@ -38,10 +37,10 @@ export const useAddress = create<AddressState>((set) => ({
       if (!user) throw new Error('No user found');
 
       const { data, error } = await supabase
-        .from('Addresses')
+        .from('Address')
         .select('*')
-        .eq('user_id', user.id)
-        .order('is_default', { ascending: false });
+        .eq('userId', user.id)
+        .order('isDefault', { ascending: false });
 
       if (error) throw error;
 
@@ -57,9 +56,22 @@ export const useAddress = create<AddressState>((set) => ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No user found');
 
+      // Generate a cuid if not provided in newAddress
+      const generatedId = newAddress.id ? newAddress.id : cuid();
+      // Remove any existing id property to avoid conflicts
+      const { id, ...addressData } = newAddress;
+      // Get current timestamp in ISO format
+      const currentTimestamp = new Date().toISOString();
+
       const { data, error } = await supabase
-        .from('Addresses')
-        .insert([{ ...newAddress, user_id: user.id }])
+        .from('Address')
+        .insert([{
+          id: generatedId,
+          ...addressData,
+          userId: user.id,
+          updatedAt: currentTimestamp,
+          createdAt: currentTimestamp,
+        }])
         .select()
         .single();
 
@@ -75,11 +87,11 @@ export const useAddress = create<AddressState>((set) => ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No user found');
 
-      await supabase.from('Addresses').update({ is_default: false }).eq('user_id', user.id);
+      await supabase.from('Address').update({ isDefault: false }).eq('userId', user.id);
 
       const { error } = await supabase
-        .from('Addresses')
-        .update({ is_default: true })
+        .from('Address')
+        .update({ isDefault: true })
         .eq('id', addressId);
 
       if (error) throw error;
@@ -91,7 +103,7 @@ export const useAddress = create<AddressState>((set) => ({
   },
   deleteAddress: async (addressId) => {
     try {
-      const { error } = await supabase.from('Addresses').delete().eq('id', addressId);
+      const { error } = await supabase.from('Address').delete().eq('id', addressId);
 
       if (error) throw error;
 

@@ -17,17 +17,21 @@ interface OrderItem {
   name: string;
   price: number;
   quantity: number;
+  // add options if needed
 }
 
-interface Order {
+interface Restaurant {
+  id: string;
+  name: string;
+}
+
+export interface Order {
   id: string;
   userId: string;
-  restaurantId: string;
   status: 'PENDING' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'DELIVERED' | 'CANCELLED';
   totalAmount: number;
   deliveryAddress: string;
   driverId: string | null;
-  assignedDriver: string | null;
   assignedAt: string | null;
   pickedUpAt: string | null;
   deliveredAt: string | null;
@@ -37,6 +41,7 @@ interface Order {
   createdAt: string;
   updatedAt: string;
   orderItems: OrderItem[];
+  restaurant?: Restaurant;
 }
 
 export function OrdersScreen({ navigation }: { navigation: any }) {
@@ -48,37 +53,50 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No user found');
-  
-      const { data: orders, error } = await supabase
+
+      const { data, error } = await supabase
         .from('Order')
         .select(`
           id,
-          userId,
-          restaurant, 
+          "userId",
           status,
-          totalAmount,
-          deliveryAddress,
-          driverId,
-          assignedDriver,
-          assignedAt,
-          pickedUpAt,
-          deliveredAt,
-          estimatedTime,
-          actualTime,
-          driverRating,
-          createdAt,
-          updatedAt,
-          orderItem
+          "totalAmount",
+          "deliveryAddress",
+          "driverId",
+          "assignedAt",
+          "pickedUpAt",
+          "deliveredAt",
+          "estimatedTime",
+          "actualTime",
+          "driverRating",
+          "createdAt",
+          "updatedAt",
+          orderItems:OrderItem (
+             id,
+             "orderId",
+             "menuItemId",
+             quantity,
+             options,
+             price,
+             name,
+             "createdAt",
+             "updatedAt"
+          ),
+          restaurant:Restaurant (
+             id,
+             name
+          )
         `)
-        .eq('userId', user.id)
-        .order('createdAt', { ascending: false });
-  
+        .eq("userId", user.id)
+        .order("createdAt", { ascending: false });
+
       if (error) throw error;
-  
+
+      // Ensure orderItems is an array (even if null)
       setOrders(
-        orders.map((order) => ({
+        data.map((order: any) => ({
           ...order,
-          orderItems: Array.isArray(order.orderItem) ? order.orderItem : [],
+          orderItems: Array.isArray(order.orderItems) ? order.orderItems : [],
         }))
       );
     } catch (error) {
@@ -89,7 +107,6 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
       setRefreshing(false);
     }
   };
-  
 
   useEffect(() => {
     fetchOrders();
@@ -142,8 +159,10 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
     >
       <View style={styles.orderHeader}>
         <View>
-        <Text style={styles.restaurantName}>{item.restaurant}</Text> 
-        <Text style={styles.orderDate}>{formatDate(item.createdAt)}</Text>
+          <Text style={styles.restaurantName}>
+            {item.restaurant ? item.restaurant.name : 'Restaurant'}
+          </Text>
+          <Text style={styles.orderDate}>{formatDate(item.createdAt)}</Text>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
           <Ionicons name={getStatusIcon(item.status)} size={16} color="#fff" />
@@ -154,11 +173,10 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
       </View>
 
       {(item.orderItems || []).map((orderItem, index) => (
-  <Text key={index} style={styles.orderItemText}>
-    {orderItem.quantity}x {orderItem.name} (${orderItem.price.toFixed(2)})
-  </Text>
-))}
-
+        <Text key={index} style={styles.orderItemText}>
+          {orderItem.quantity}x {orderItem.name} (${orderItem.price.toFixed(2)})
+        </Text>
+      ))}
 
       <View style={styles.orderFooter}>
         <Text style={styles.totalItems}>
