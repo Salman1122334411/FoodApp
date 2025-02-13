@@ -17,7 +17,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCart } from '../hooks/useCart';
 import { searchRestaurants, searchMenuItems } from '../lib/supabase';
 
-// Custom hook to debounce a value by a given delay.
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
   useEffect(() => {
@@ -36,7 +35,6 @@ export const RestaurantListScreen = ({ navigation }: { navigation: any }) => {
   const [error, setError] = useState<string | null>(null);
   const { cartItems, addToCart, removeFromCart } = useCart();
   const [searchTerm, setSearchTerm] = useState('');
-  // Use debouncedSearchTerm to avoid re-rendering on every keystroke.
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
   useEffect(() => {
@@ -75,8 +73,6 @@ export const RestaurantListScreen = ({ navigation }: { navigation: any }) => {
 
       if (error) throw error;
 
-      // If the restaurant's name matched, keep all menu items;
-      // else filter the menu items based on the term.
       const processedRestaurants = data.map(restaurant => {
         if (restaurantIdsFromName.includes(restaurant.id)) {
           return restaurant;
@@ -137,18 +133,6 @@ export const RestaurantListScreen = ({ navigation }: { navigation: any }) => {
       restaurantName: restaurant.name,
     });
   };
-
-  const SearchBar = () => (
-    <View style={styles.searchContainer}>
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search restaurants or menu items..."
-        placeholderTextColor="#999"
-        value={searchTerm}
-        onChangeText={setSearchTerm}
-      />
-    </View>
-  );
 
   const renderMenuItem = (restaurant: Restaurant, menuItem: MenuItem) => {
     const itemInCart = cartItems.find(item => item.id === menuItem.id);
@@ -219,15 +203,6 @@ export const RestaurantListScreen = ({ navigation }: { navigation: any }) => {
     </View>
   );
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FF4B2B" />
-        <Text style={styles.loadingText}>Loading restaurants...</Text>
-      </View>
-    );
-  }
-
   if (error) {
     return (
       <View style={styles.errorContainer}>
@@ -256,7 +231,24 @@ export const RestaurantListScreen = ({ navigation }: { navigation: any }) => {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
-        ListHeaderComponent={<SearchBar />}
+        ListHeaderComponent={
+          <>
+            <View style={styles.searchContainer}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search restaurants or menu items..."
+                placeholderTextColor="#999"
+                value={searchTerm}
+                onChangeText={setSearchTerm}
+                autoFocus={true}
+              />
+            </View>
+            {loading && !refreshing && (
+              <ActivityIndicator size="large" color="#FF4B2B" style={styles.fullLoading} />
+            )}
+          </>
+        }
+        keyboardShouldPersistTaps="handled"
       />
       {cartItems.length > 0 && (
         <TouchableOpacity 
@@ -276,28 +268,34 @@ export const RestaurantListScreen = ({ navigation }: { navigation: any }) => {
   );
 };
 
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
   },
   searchContainer: {
-    padding: 16,
-    paddingBottom: 0,
-    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 2,
+    paddingBottom:20,
+     color: '#000'
   },
   searchInput: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#1F2937',
-  },
-  loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#F3F4F6",
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+
   },
+  // loadingContainer: {
+  //   flex: 1,
+  //   justifyContent: 'center',
+  //   alignItems: 'center',
+  // },
   loadingText: {
     marginTop: 10,
     fontSize: 16,
@@ -328,6 +326,13 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     padding: 16,
+  },
+
+  searchLoading: {
+    marginLeft: 8,
+  },
+  fullLoading: {
+    marginVertical: 20,
   },
   restaurantCard: {
     backgroundColor: '#fff',

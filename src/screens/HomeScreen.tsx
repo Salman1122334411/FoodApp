@@ -18,15 +18,6 @@ import { useNavigation } from "@react-navigation/native"
 
 const { width } = Dimensions.get("window")
 const CARD_WIDTH = width * 0.7
-
-const CATEGORIES = [
-  { id: "1", name: "All", icon: require("../../assets/placeholder.png"), color: "#FFE1E1" },
-  { id: "2", name: "Pizza", icon: require("../../assets/placeholder.png"), color: "#FFE9D5" },
-  { id: "3", name: "Burger", icon: require("../../assets/placeholder.png"), color: "#E1F7E0" },
-  { id: "4", name: "Sushi", icon: require("../../assets/placeholder.png"), color: "#FFE1E9" },
-  { id: "5", name: "Dessert", icon: require("../../assets/placeholder.png"), color: "#F4E1FF" },
-]
-
 const OFFERS = [
   {
     id: "1",
@@ -62,6 +53,32 @@ export function HomeScreen() {
   const [userName, setUserName] = useState<string | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [popularMenuItems, setPopularMenuItems] = useState<MenuItem[]>([]);
+ // New state for current location string.
+ const [currentLocation, setCurrentLocation] = useState("Fetching current location...");
+
+ // Request location permission and get current location.
+ useEffect(() => {
+  (async () => {
+    try {
+      // Request foreground permission
+      console.log("hello")
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      console.log("Location permission status:", status);
+      if (status !== "granted") {
+        setCurrentLocation("Location permission denied");
+        return;
+      }
+      // Get current position
+      let loc = await Location.getCurrentPositionAsync({});
+      console.log("Location fetched:", loc);
+      const { latitude, longitude } = loc.coords;
+      setCurrentLocation(`Delivery to: (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+    } catch (error) {
+      console.error("Error fetching location:", error);
+      setCurrentLocation("Error fetching location");
+    }
+  })();
+}, []);
 
   useEffect(() => {
     const fetchPopularMenuItems = async () => {
@@ -168,7 +185,8 @@ export function HomeScreen() {
             <Text style={styles.greeting}>Hello, {userName || "User"}! 👋</Text>
             <TouchableOpacity style={styles.locationButton}>
               <Ionicons name="location-outline" size={20} color="#FF4B2B" />
-              <Text style={styles.deliveryAddress}>Delivery to Current Location</Text>
+              {/* Display the current location state here */}
+              <Text style={styles.deliveryAddress}>{currentLocation}</Text>
               <Ionicons name="chevron-down" size={20} color="#6B7280" />
             </TouchableOpacity>
           </View>
@@ -179,44 +197,32 @@ export function HomeScreen() {
 
         {/* Offers Carousel */}
         <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.offersContainer}
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  contentContainerStyle={styles.offersContainer}
+>
+  {OFFERS.map((offer) => (
+    <View
+      key={offer.id}
+      style={[styles.offerCard, { backgroundColor: offer.color }]}
+    >
+      <View style={styles.offerContent}>
+        <Text style={styles.offerTitle}>{offer.title}</Text>
+        <Text style={styles.offerDescription}>{offer.description}</Text>
+        <TouchableOpacity
+          style={styles.orderNowButton}
+          onPress={() => navigation.navigate("Restaurants")}
         >
-          {OFFERS.map((offer) => (
-            <TouchableOpacity
-              key={offer.id}
-              style={[styles.offerCard, { backgroundColor: offer.color }]}
-              onPress={() => navigation.navigate("Restaurants")}
-            >
-              <View style={styles.offerContent}>
-                <Text style={styles.offerTitle}>{offer.title}</Text>
-                <Text style={styles.offerDescription}>{offer.description}</Text>
-                <TouchableOpacity style={styles.orderNowButton}>
-                  <Text style={styles.orderNowText}>Order Now</Text>
-                </TouchableOpacity>
-              </View>
-              <Image source={{ uri: offer.image }} style={styles.offerImage} />
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+          <Text style={styles.orderNowText}>Order Now</Text>
+        </TouchableOpacity>
+      </View>
+      <Image source={{ uri: offer.image }} style={styles.offerImage} />
+    </View>
+  ))}
+</ScrollView>
+
 
         {/* Categories */}
-        <View style={styles.categoriesSection}>
-          <Text style={styles.sectionTitle}>Categories</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categories}
-          >
-            {CATEGORIES.map((category) => (
-              <TouchableOpacity key={category.id} style={styles.categoryItem}>
-                <Image source={category.icon} style={styles.categoryIcon} />
-                <Text style={styles.categoryName}>{category.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
 
         {/* Popular Dishes */}
         <View style={styles.section}>
@@ -314,8 +320,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   header: {
-    padding: 16,
-    backgroundColor: "#fff",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   greeting: {
     fontSize: 24,
@@ -326,12 +335,11 @@ const styles = StyleSheet.create({
   locationButton: {
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: "#f2f2f2",
+    padding: 8,
+    borderRadius: 20,
   },
-  deliveryAddress: {
-    fontSize: 16,
-    color: "#6B7280",
-    marginHorizontal: 4,
-  },
+  deliveryAddress: { marginHorizontal: 8, fontSize: 14, color: "#333" },
   offersContainer: {
     padding: 16,
   },
@@ -377,33 +385,7 @@ const styles = StyleSheet.create({
     right: -20,
     bottom: -20,
   },
-  categoriesSection: {
-    padding: 16,
-  },
-  categories: {
-    paddingTop: 16,
-    flexDirection: "row",
-  },
-  // Updated category style to show the full image with curved corners
-  categoryItem: {
-    width: 100,
-    height: 100,
-    borderRadius: 16,
-    marginRight: 16,
-    overflow: "hidden", // ensures the image corners are curved
-  },
-  categoryIcon: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 16,
-  },
-  categoryName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#1F2937",
-    textAlign: "center",
-    marginTop: 4,
-  },
+
   section: {
     padding: 16,
   },
