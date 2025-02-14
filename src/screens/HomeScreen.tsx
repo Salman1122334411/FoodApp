@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -7,17 +7,18 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  TextInput,
   Dimensions,
-} from "react-native"
-import { SafeAreaView } from "react-native-safe-area-context"
-import { Ionicons } from "@expo/vector-icons"
-import { supabase } from "../lib/supabase"
-import type { Session } from "@supabase/supabase-js"
-import { useNavigation } from "@react-navigation/native"
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { supabase } from "../lib/supabase";
+import type { Session } from "@supabase/supabase-js";
+import { useNavigation } from "@react-navigation/native";
+// Import the custom location hook
+import { useLocation } from "../hooks/useLocation";
 
-const { width } = Dimensions.get("window")
-const CARD_WIDTH = width * 0.7
+const { width } = Dimensions.get("window");
+const CARD_WIDTH = width * 0.7;
 const OFFERS = [
   {
     id: "1",
@@ -33,8 +34,7 @@ const OFFERS = [
     image: "https://your-cdn.com/offers/2.jpg",
     color: "#00A699",
   },
-]
-
+];
 
 interface MenuItem {
   id: string;
@@ -46,72 +46,54 @@ interface MenuItem {
     name: string;
   };
 }
-export function HomeScreen() {
-  const navigation = useNavigation()
-  const [restaurants, setRestaurants] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [userName, setUserName] = useState<string | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
-  const [popularMenuItems, setPopularMenuItems] = useState<MenuItem[]>([]);
- // New state for current location string.
- const [currentLocation, setCurrentLocation] = useState("Fetching current location...");
 
- // Request location permission and get current location.
- useEffect(() => {
-  (async () => {
-    try {
-      // Request foreground permission
-      console.log("hello")
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      console.log("Location permission status:", status);
-      if (status !== "granted") {
-        setCurrentLocation("Location permission denied");
-        return;
-      }
-      // Get current position
-      let loc = await Location.getCurrentPositionAsync({});
-      console.log("Location fetched:", loc);
-      const { latitude, longitude } = loc.coords;
-      setCurrentLocation(`Delivery to: (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
-    } catch (error) {
-      console.error("Error fetching location:", error);
-      setCurrentLocation("Error fetching location");
-    }
-  })();
-}, []);
+export function HomeScreen() {
+  const navigation = useNavigation();
+  const [restaurants, setRestaurants] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [userName, setUserName] = useState<string | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [popularMenuItems, setPopularMenuItems] = useState<MenuItem[]>([]);
+
+  // Use the custom hook to access the location state and fetch function.
+  const { currentLocation, fetchLocation } = useLocation();
+console.log("currentLocation:", currentLocation);
+  useEffect(() => {
+    fetchLocation();
+  }, [fetchLocation]);
 
   useEffect(() => {
     const fetchPopularMenuItems = async () => {
-      // Adjust the query as needed—for example, ordering by a popularity field or createdAt
       const { data, error } = await supabase
-  .from('MenuItem')
-  .select(`
-    id,
-    label,
-    price,
-    image,
-    restaurantId,
-    Restaurant:Restaurant (
-      id,
-      name,
-      chainName,
-      address,
-      latitude,
-      longitude,
-      cuisineType,
-      segment,
-      city,
-      area,
-      rating,
-      coverImage,
-      deliveryTime,
-      minimumOrder
-    )
-  `)
-  .order('createdAt', { ascending: false })
-  .limit(10);
+        .from("MenuItem")
+        .select(`
+          id,
+          label,
+          price,
+          image,
+          restaurantId,
+          Restaurant:Restaurant (
+            id,
+            name,
+            chainName,
+            address,
+            latitude,
+            longitude,
+            cuisineType,
+            segment,
+            city,
+            area,
+            rating,
+            coverImage,
+            deliveryTime,
+            minimumOrder
+          )
+        `)
+        .order("createdAt", { ascending: false })
+        .limit(10);
+
       if (error) {
-        console.error('Error fetching popular menu items', error);
+        console.error("Error fetching popular menu items", error);
         return;
       }
 
@@ -132,24 +114,27 @@ export function HomeScreen() {
     fetchPopularMenuItems();
   }, []);
 
-
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      if (session) fetchUserProfile(session.user.id)
-    })
-    fetchRestaurants()
-  }, [])
+      setSession(session);
+      if (session) fetchUserProfile(session.user.id);
+    });
+    fetchRestaurants();
+  }, []);
 
   const fetchUserProfile = async (userId: string) => {
-    const { data, error } = await supabase.from("User").select("name").eq("id", userId).single()
+    const { data, error } = await supabase
+      .from("User")
+      .select("name")
+      .eq("id", userId)
+      .single();
 
-    if (error) console.error("Error fetching user:", error.message)
-    else setUserName(data?.name || "User")
-  }
+    if (error) console.error("Error fetching user:", error.message);
+    else setUserName(data?.name || "User");
+  };
 
   const fetchRestaurants = async () => {
-    setLoading(true)
+    setLoading(true);
     const { data, error } = await supabase
       .from("Restaurant")
       .select(`
@@ -169,12 +154,12 @@ export function HomeScreen() {
         minimumOrder,
         menuItems: MenuItem (*)
       `)
-      .order("rating", { ascending: false })
+      .order("rating", { ascending: false });
 
-    if (error) console.error("Error fetching restaurants:", error.message)
-    else setRestaurants(data || [])
-    setLoading(false)
-  }
+    if (error) console.error("Error fetching restaurants:", error.message);
+    else setRestaurants(data || []);
+    setLoading(false);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -185,7 +170,7 @@ export function HomeScreen() {
             <Text style={styles.greeting}>Hello, {userName || "User"}! 👋</Text>
             <TouchableOpacity style={styles.locationButton}>
               <Ionicons name="location-outline" size={20} color="#FF4B2B" />
-              {/* Display the current location state here */}
+              {/* Display the current location from the custom hook */}
               <Text style={styles.deliveryAddress}>{currentLocation}</Text>
               <Ionicons name="chevron-down" size={20} color="#6B7280" />
             </TouchableOpacity>
@@ -197,30 +182,29 @@ export function HomeScreen() {
 
         {/* Offers Carousel */}
         <ScrollView
-  horizontal
-  showsHorizontalScrollIndicator={false}
-  contentContainerStyle={styles.offersContainer}
->
-  {OFFERS.map((offer) => (
-    <View
-      key={offer.id}
-      style={[styles.offerCard, { backgroundColor: offer.color }]}
-    >
-      <View style={styles.offerContent}>
-        <Text style={styles.offerTitle}>{offer.title}</Text>
-        <Text style={styles.offerDescription}>{offer.description}</Text>
-        <TouchableOpacity
-          style={styles.orderNowButton}
-          onPress={() => navigation.navigate("Restaurants")}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.offersContainer}
         >
-          <Text style={styles.orderNowText}>Order Now</Text>
-        </TouchableOpacity>
-      </View>
-      <Image source={{ uri: offer.image }} style={styles.offerImage} />
-    </View>
-  ))}
-</ScrollView>
-
+          {OFFERS.map((offer) => (
+            <View
+              key={offer.id}
+              style={[styles.offerCard, { backgroundColor: offer.color }]}
+            >
+              <View style={styles.offerContent}>
+                <Text style={styles.offerTitle}>{offer.title}</Text>
+                <Text style={styles.offerDescription}>{offer.description}</Text>
+                <TouchableOpacity
+                  style={styles.orderNowButton}
+                  onPress={() => navigation.navigate("Restaurants")}
+                >
+                  <Text style={styles.orderNowText}>Order Now</Text>
+                </TouchableOpacity>
+              </View>
+              <Image source={{ uri: offer.image }} style={styles.offerImage} />
+            </View>
+          ))}
+        </ScrollView>
 
         {/* Categories */}
 
@@ -269,13 +253,20 @@ export function HomeScreen() {
               <TouchableOpacity
                 key={restaurant.id}
                 style={styles.restaurantCard}
-                onPress={() => navigation.navigate("RestaurantDetails", { restaurant })}
+                onPress={() =>
+                  navigation.navigate("RestaurantDetails", { restaurant })
+                }
               >
-                <Image source={{ uri: restaurant.coverImage }} style={styles.restaurantImage} />
+                <Image
+                  source={{ uri: restaurant.coverImage }}
+                  style={styles.restaurantImage}
+                />
                 <View style={styles.restaurantOverlay}>
                   <View style={styles.deliveryTimeChip}>
                     <Ionicons name="time-outline" size={16} color="#FF4B2B" />
-                    <Text style={styles.deliveryTimeText}>{restaurant.deliveryTime}</Text>
+                    <Text style={styles.deliveryTimeText}>
+                      {restaurant.deliveryTime}
+                    </Text>
                   </View>
                 </View>
                 <View style={styles.restaurantInfo}>
@@ -338,8 +329,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#f2f2f2",
     padding: 8,
     borderRadius: 20,
+    maxWidth: "100%", // Ensures the button doesn't extend beyond the screen
   },
-  deliveryAddress: { marginHorizontal: 8, fontSize: 14, color: "#333" },
+  deliveryAddress: {
+    marginHorizontal: 8,
+    fontSize: 14,
+   flexShrink: 1, // Allows the text to shrink if it's too long
+    // Alternatively, you can use flexWrap if you prefer multiline text:
+   //  flexWrap: "wrap",
+  },
   offersContainer: {
     padding: 16,
   },

@@ -17,14 +17,14 @@ import cuid from 'cuid';
 interface Address {
   id: string;
   label: string;
-  street_address: string;
+  streetAddress: string;
   city: string;
   state: string;
-  zip_code: string;
-  phone_number: string;
+  zipCode: string;
+  phoneNumber: string;
   latitude?: number;
   longitude?: number;
-  is_default: boolean;
+  isDefault: boolean;
 }
 
 export function CartScreen({ navigation }: { navigation: any }) {
@@ -35,11 +35,11 @@ export function CartScreen({ navigation }: { navigation: any }) {
   const [useNewAddress, setUseNewAddress] = useState(false);
   const [loading, setLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState<{
-    street_address?: string;
+    streetAddress?: string;
     city?: string;
     state?: string;
-    zip_code?: string;
-    phone_number?: string;
+    zipCode?: string;
+    phoneNumber?: string;
   }>({});
 
   useEffect(() => {
@@ -50,8 +50,8 @@ export function CartScreen({ navigation }: { navigation: any }) {
     const errors: typeof validationErrors = {};
 
     // Street Address validation
-    if (!newAddress.street_address?.trim()) {
-      errors.street_address = "Street address is required";
+    if (!newAddress.streetAddress?.trim()) {
+      errors.streetAddress = "Street address is required";
     }
 
     // City validation
@@ -67,16 +67,16 @@ export function CartScreen({ navigation }: { navigation: any }) {
     }
 
     // Zip code validation
-    if (!newAddress.zip_code?.trim()) {
-      errors.zip_code = "Postal code is required";
-    } else if (!/^\d{5}(-\d{4})?$/.test(newAddress.zip_code.trim())) {
-      errors.zip_code = "Invalid postal code format";
+    if (!newAddress.zipCode?.trim()) {
+      errors.zipCode = "Postal code is required";
+    } else if (!/^\d{5}(-\d{4})?$/.test(newAddress.zipCode.trim())) {
+      errors.zipCode = "Invalid postal code format";
     }
 
-    if (!newAddress.phone_number?.trim()) {
-      errors.phone_number = "Phone number is required";
-    } else if (!/^\d{11}$/.test(newAddress.phone_number.trim())) {
-      errors.phone_number = "Phone number must be exactly 11 digits long";
+    if (!newAddress.phoneNumber?.trim()) {
+      errors.phoneNumber = "Phone number is required";
+    } else if (!/^\d{11}$/.test(newAddress.phoneNumber.trim())) {
+      errors.phoneNumber = "Phone number must be exactly 11 digits long";
     }
 
     setValidationErrors(errors);
@@ -100,7 +100,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
       if (error) throw error;
       setAddresses(data || []);
       if (data && data.length > 0) {
-        const defaultAddress = data.find((addr) => addr.is_default) || data[0];
+        const defaultAddress = data.find((addr) => addr.isDefault) || data[0];
         setSelectedAddress(defaultAddress);
       }
     } catch (error) {
@@ -137,14 +137,14 @@ export function CartScreen({ navigation }: { navigation: any }) {
               id:cuid(),
               userId: user.id,
               label: newAddress.label || "Home",
-              streetAddress: newAddress.street_address,
+              streetAddress: newAddress.streetAddress,
               city: newAddress.city,
               state: newAddress.state,
-              zipCode: newAddress.zip_code,
-              phoneNumber: newAddress.phone_number,
+              zipCode: newAddress.zipCode,
+              phoneNumber: newAddress.phoneNumber,
               latitude: newAddress.latitude || null,
               longitude: newAddress.longitude || null,
-              isDefault: newAddress.is_default || false,
+              isDefault: newAddress.isDefault || false,
               updatedAt: currentTimestamp,
             },
           ])
@@ -264,15 +264,15 @@ export function CartScreen({ navigation }: { navigation: any }) {
                   }}
                 >
                   <Text style={styles.addressText}>
-                    {address.label}: {address.street_address}
+                    {address.label}: {address.streetAddress}
                   </Text>
                   <Text style={styles.addressText}>
-                    {address.city}, {address.state} {address.zip_code}
+                    {address.city}, {address.state} {address.zipCode}
                   </Text>
                   <Text style={styles.addressText}>
-                    Phone: {address.phone_number}
+                    Phone: {address.phoneNumber}
                   </Text>
-                  {address.is_default && (
+                  {address.isDefault && (
                     <Text style={styles.defaultBadge}>Default</Text>
                   )}
                 </TouchableOpacity>
@@ -296,44 +296,44 @@ export function CartScreen({ navigation }: { navigation: any }) {
               <TextInput
                 style={[
                   styles.input,
-                  validationErrors.street_address && styles.inputError,
+                  validationErrors.streetAddress && styles.inputError,
                 ]}
-                value={newAddress.street_address}
+                value={newAddress.streetAddress}
                 onChangeText={(text) => {
-                  setNewAddress({ ...newAddress, street_address: text });
+                  setNewAddress({ ...newAddress, streetAddress: text });
                   setValidationErrors({
                     ...validationErrors,
-                    street_address: undefined,
+                    streetAddress: undefined,
                   });
                 }}
                 placeholder="Street Address"
               />
-              {validationErrors.street_address && (
+              {validationErrors.streetAddress && (
                 <Text style={styles.errorText}>
-                  {validationErrors.street_address}
+                  {validationErrors.streetAddress}
                 </Text>
               )}
 
               <TextInput
                 style={[
                   styles.input,
-                  validationErrors.phone_number && styles.inputError,
+                  validationErrors.phoneNumber && styles.inputError,
                 ]}
-                value={newAddress.phone_number}
+                value={newAddress.phoneNumber}
                 onChangeText={(text) => {
                   const cleanedText = text.replace(/\D/g, ""); // Remove non-numeric characters
-                  setNewAddress({ ...newAddress, phone_number: cleanedText });
+                  setNewAddress({ ...newAddress, phoneNumber: cleanedText });
                   setValidationErrors({
                     ...validationErrors,
-                    phone_number: undefined,
+                    phoneNumber: undefined,
                   });
                 }}
                 placeholder="Phone Number"
                 keyboardType="phone-pad"
               />
-              {validationErrors.phone_number && (
+              {validationErrors.phoneNumber && (
                 <Text style={styles.errorText}>
-                  {validationErrors.phone_number}
+                  {validationErrors.phoneNumber}
                 </Text>
               )}
 
@@ -375,23 +375,23 @@ export function CartScreen({ navigation }: { navigation: any }) {
               <TextInput
                 style={[
                   styles.input,
-                  validationErrors.zip_code && styles.inputError,
+                  validationErrors.zipCode && styles.inputError,
                 ]}
-                value={newAddress.zip_code}
+                value={newAddress.zipCode}
                 onChangeText={(text) => {
-                  setNewAddress({ ...newAddress, zip_code: text });
+                  setNewAddress({ ...newAddress, zipCode: text });
                   setValidationErrors({
                     ...validationErrors,
-                    zip_code: undefined,
+                    zipCode: undefined,
                   });
                 }}
                 placeholder="Postal Code"
                 keyboardType="numeric"
                 maxLength={10}
               />
-              {validationErrors.zip_code && (
+              {validationErrors.zipCode && (
                 <Text style={styles.errorText}>
-                  {validationErrors.zip_code}
+                  {validationErrors.zipCode}
                 </Text>
               )}
             </View>
