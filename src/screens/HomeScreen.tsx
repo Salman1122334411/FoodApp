@@ -16,7 +16,7 @@ import type { Session } from "@supabase/supabase-js";
 import { useNavigation } from "@react-navigation/native";
 // Import the custom location hook
 import { useLocation } from "../hooks/useLocation";
-
+import SaveLocationModal from './SaveLocationModal'; // Adjust the path as needed
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.7;
 const OFFERS = [
@@ -54,7 +54,7 @@ export function HomeScreen() {
   const [userName, setUserName] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [popularMenuItems, setPopularMenuItems] = useState<MenuItem[]>([]);
-
+  const [modalVisible, setModalVisible] = useState(false);
   // Use the custom hook to access the location state and fetch function.
   const { currentLocation, fetchLocation } = useLocation();
 console.log("currentLocation:", currentLocation);
@@ -168,9 +168,11 @@ console.log("currentLocation:", currentLocation);
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>Hello, {userName || "User"}! 👋</Text>
-            <TouchableOpacity style={styles.locationButton}>
+            <TouchableOpacity
+              style={styles.locationButton}
+              onPress={() => setModalVisible(true)}
+            >
               <Ionicons name="location-outline" size={20} color="#FF4B2B" />
-              {/* Display the current location from the custom hook */}
               <Text style={styles.deliveryAddress}>{currentLocation}</Text>
               <Ionicons name="chevron-down" size={20} color="#6B7280" />
             </TouchableOpacity>
@@ -300,6 +302,13 @@ console.log("currentLocation:", currentLocation);
           )}
         </View>
       </ScrollView>
+      <SaveLocationModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        onAddressAdded={() => {
+          // Optionally refresh addresses or show a toast message
+        }}
+      />
     </SafeAreaView>
   );
 }

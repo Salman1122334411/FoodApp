@@ -14,6 +14,8 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { SignUpScreen } from '../screens/SignUpScreen';
 import { EditProfileScreen } from '../screens/EditUserProfile';
 import { OrderDetailsScreen } from '../screens/OrdersDetailScreen';
+import { ProfileSetupScreen } from '../screens/ProfileSetupScreen';
+import { EmailConfirmationScreen } from '../screens/EmailConfirmationScreen';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
@@ -78,6 +80,8 @@ export function AppNavigator() {
       <Stack.Screen name="Cart" component={CartScreen} />
       <Stack.Screen name="CheckoutScreen" component={CheckoutScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="EmailConfirmation" component={EmailConfirmationScreen} />
+      <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
       <Stack.Screen name="Register" component={SignUpScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="Orders" component={OrdersScreen} />

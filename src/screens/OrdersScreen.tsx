@@ -1,6 +1,4 @@
-
-
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, memo } from "react";
 import {
   View,
   Text,
@@ -12,10 +10,11 @@ import {
   Animated,
   Dimensions,
   TextInput,
-  StyleSheet as RNStyleSheet,
+  StyleProp,
+  ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { supabase, searchOrders } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
@@ -37,7 +36,13 @@ interface Restaurant {
 export interface Order {
   id: string;
   userId: string;
-  status: "PENDING" | "CONFIRMED" | "PREPARING" | "READY" | "DELIVERED" | "CANCELLED";
+  status:
+    | "PENDING"
+    | "CONFIRMED"
+    | "PREPARING"
+    | "READY"
+    | "DELIVERED"
+    | "CANCELLED";
   totalAmount: number;
   deliveryAddress: string;
   driverId: string | null;
@@ -53,120 +58,211 @@ export interface Order {
   restaurant?: Restaurant;
 }
 
+// ----------------------
+// SearchBar Component
+// ----------------------
+const SearchBar = memo(
+  ({
+    searchQuery,
+    onChangeText,
+  }: {
+    searchQuery: string;
+    onChangeText: (text: string) => void;
+  }) => {
+    return (
+      <View style={searchBarStyles.container}>
+        <Ionicons name="search" size={24} color="#6B7280" style={searchBarStyles.searchIcon} />
+        <TextInput
+          style={searchBarStyles.input}
+          placeholder="Search orders by item name"
+          placeholderTextColor="#6B7280"
+          value={searchQuery}
+          onChangeText={onChangeText}
+          returnKeyType="search"
+        />
+      </View>
+    );
+  }
+);
+
+const searchBarStyles = StyleSheet.create({
+  container: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgb(255,255,255)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    // Removed extra marginBottom so it fits well within the header.
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: "#000",
+  },
+});
+
+// ----------------------
+// Debounce Hook
+// ----------------------
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
+}
+
+// ----------------------
+// OrdersScreen Component
+// ----------------------
 export function OrdersScreen({ navigation }: { navigation: any }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchTerm = useDebounce(searchQuery, 500);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const scrollY = new Animated.Value(0);
 
-  // Fetch all orders for the current user
-  const fetchOrders = useCallback(async () => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No user found");
-
-      const { data, error } = await supabase
-        .from("Order")
-        .select(`
-          id,
-          "userId",
-          status,
-          "totalAmount",
-          "deliveryAddress",
-          "driverId",
-          "assignedAt",
-          "pickedUpAt",
-          "deliveredAt",
-          "estimatedTime",
-          "actualTime",
-          "driverRating",
-          "createdAt",
-          "updatedAt",
-          orderItems:OrderItem (
-             id,
-             "orderId",
-             "menuItemId",
-             quantity,
-             options,
-             price,
-             name,
-             "createdAt",
-             "updatedAt"
-          ),
-          restaurant:Restaurant (
-             id,
-             name
-          )
-        `)
-        .eq("userId", user.id)
-        .order("createdAt", { ascending: false });
-
-      if (error) throw error;
-
-      const formattedOrders = data.map((order: any) => ({
-        ...order,
-        orderItems: Array.isArray(order.orderItems) ? order.orderItems : [],
-      }));
-
-      setOrders(formattedOrders);
-    } catch (error) {
-      console.error("Error fetching orders:", error);
-      Alert.alert("Error", "Failed to load orders");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  // When the screen mounts or search query is empty, load all orders
-  useEffect(() => {
-    if (searchQuery.trim().length === 0) {
-      fetchOrders();
-    }
-  }, [searchQuery, fetchOrders]);
-
-  // When search query is non-empty, use the searchOrders function from supabase.ts
-  useEffect(() => {
-    if (searchQuery.trim().length > 0) {
-      const search = async () => {
-        try {
+  // ----------------------
+  // Fetch Orders
+  // ----------------------
+  const fetchOrders = useCallback(
+    async (searchTerm: string = "") => {
+      try {
+        if (isInitialLoad) {
           setLoading(true);
-          const result = await searchOrders(searchQuery);
-          setOrders(result);
-        } catch (error) {
-          console.error("Error searching orders:", error);
-          Alert.alert("Error", "Failed to search orders");
-        } finally {
-          setLoading(false);
-          setRefreshing(false);
+        } else {
+          setIsSearching(true);
         }
-      };
-      search();
-    }
-  }, [searchQuery]);
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("No user found");
+
+        let query;
+        if (searchTerm) {
+          query = supabase
+            .from("Order")
+            .select(
+              `
+              id,
+              "userId",
+              status,
+              "totalAmount",
+              "deliveryAddress",
+              "driverId",
+              "assignedAt",
+              "pickedUpAt",
+              "deliveredAt",
+              "estimatedTime",
+              "actualTime",
+              "driverRating",
+              "createdAt",
+              "updatedAt",
+              orderItems:OrderItem!inner(
+                 id,
+                 "orderId",
+                 "menuItemId",
+                 quantity,
+                 options,
+                 price,
+                 name,
+                 "createdAt",
+                 "updatedAt"
+              ),
+              restaurant:Restaurant(
+                 id,
+                 name
+              )
+            `
+            )
+            .eq("userId", user.id)
+            .ilike("orderItems.name", `%${searchTerm}%`)
+            .order("createdAt", { ascending: false });
+        } else {
+          query = supabase
+            .from("Order")
+            .select(
+              `
+              id,
+              "userId",
+              status,
+              "totalAmount",
+              "deliveryAddress",
+              "driverId",
+              "assignedAt",
+              "pickedUpAt",
+              "deliveredAt",
+              "estimatedTime",
+              "actualTime",
+              "driverRating",
+              "createdAt",
+              "updatedAt",
+              orderItems:OrderItem(
+                 id,
+                 "orderId",
+                 "menuItemId",
+                 quantity,
+                 options,
+                 price,
+                 name,
+                 "createdAt",
+                 "updatedAt"
+              ),
+              restaurant:Restaurant(
+                 id,
+                 name
+              )
+            `
+            )
+            .eq("userId", user.id)
+            .order("createdAt", { ascending: false });
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        // Ensure orderItems is an array for each order.
+        const formattedOrders = data.map((order: any) => ({
+          ...order,
+          orderItems: Array.isArray(order.orderItems) ? order.orderItems : [],
+        }));
+
+        setOrders(formattedOrders);
+      } catch (error) {
+        console.error("Error fetching orders:", error);
+        Alert.alert("Error", "Failed to load orders");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        setIsSearching(false);
+        setIsInitialLoad(false);
+      }
+    },
+    [isInitialLoad]
+  );
+
+  // Fetch orders when the debounced search term changes.
+  useEffect(() => {
+    fetchOrders(debouncedSearchTerm);
+  }, [debouncedSearchTerm, fetchOrders]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    if (searchQuery.trim().length === 0) {
-      fetchOrders();
-    } else {
-      const search = async () => {
-        try {
-          const result = await searchOrders(searchQuery);
-          setOrders(result);
-        } catch (error) {
-          console.error("Error refreshing search orders:", error);
-        } finally {
-          setRefreshing(false);
-        }
-      };
-      search();
-    }
-  }, [fetchOrders, searchQuery]);
+    fetchOrders(debouncedSearchTerm);
+  }, [debouncedSearchTerm, fetchOrders]);
 
+  // ----------------------
+  // Helpers for Order Card
+  // ----------------------
   const getStatusColor = (status: Order["status"]) => {
     switch (status) {
       case "PENDING":
@@ -258,12 +354,18 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
     </TouchableOpacity>
   );
 
+  // ----------------------
+  // (Optional) Animated header height interpolation
+  // ----------------------
   const headerHeight = scrollY.interpolate({
-    inputRange: [0, 120],
-    outputRange: [200, 120],
+    inputRange: [0, 100],
+    outputRange: [200, 160],
     extrapolate: "clamp",
   });
 
+  // ----------------------
+  // Render
+  // ----------------------
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -274,54 +376,61 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Animated.View style={[styles.header, { height: headerHeight }]}>
+      {/* Header with gradient and blur matching the SearchScreen */}
+      <Animated.View style={[styles.header, { height: 200 }]}>
         <LinearGradient
           colors={["#FF6B6B", "#FF8E53"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={RNStyleSheet.absoluteFill}
+          style={StyleSheet.absoluteFill}
         />
-        <BlurView intensity={20} style={RNStyleSheet.absoluteFill} />
-        <Animated.Text
-          style={[
-            styles.title,
-            {
-              fontSize: headerHeight.interpolate({
-                inputRange: [120, 200],
-                outputRange: [24, 32],
-                extrapolate: "clamp",
-              }),
-            },
-          ]}
-        >
-          Your Orders
-        </Animated.Text>
-        <View style={styles.searchInputContainer}>
-          <Ionicons name="search" size={24} color="#6B7280" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search orders"
-            placeholderTextColor="#6B7280"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
+        <BlurView intensity={20} style={StyleSheet.absoluteFill} />
+        <Text style={styles.title}>My Orders</Text>
+        <SearchBar searchQuery={searchQuery} onChangeText={setSearchQuery} />
       </Animated.View>
+
+      {/* Orders list */}
       <Animated.FlatList
         data={orders}
         renderItem={renderOrderItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={["#FF6B6B"]}
+            tintColor="#FF6B6B"
+          />
+        }
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
         scrollEventThrottle={16}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Ionicons name="receipt-outline" size={64} color="#9CA3AF" />
-            <Text style={styles.emptyText}>No orders found</Text>
-            <TouchableOpacity style={styles.browseButton} onPress={() => navigation.navigate("Home")}>
-              <Text style={styles.browseButtonText}>Browse Restaurants</Text>
-            </TouchableOpacity>
+            {isSearching ? (
+              <ActivityIndicator size="large" color="#FF6B6B" />
+            ) : (
+              <>
+                <Ionicons name="receipt-outline" size={64} color="#9CA3AF" />
+                <Text style={styles.emptyText}>No orders found</Text>
+                <TouchableOpacity
+                  style={styles.browseButton}
+                  onPress={() => navigation.navigate("Restaurants")}
+                >
+                  <Text style={styles.browseButtonText}>Browse Restaurants</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        }
+        ListHeaderComponent={
+          <View style={{ marginBottom: 16 }}>
+            {isSearching && !refreshing && (
+              <ActivityIndicator size="small" color="#FF6B6B" />
+            )}
           </View>
         }
       />
@@ -329,16 +438,15 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
   );
 }
 
+// ----------------------
+// Styles
+// ----------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F3F4F6",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#fff", // Matches the SearchScreen background
+    paddingTop: -35,
+
   },
   header: {
     justifyContent: "flex-end",
@@ -347,28 +455,20 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   title: {
+    fontSize: 32,
     fontWeight: "bold",
     color: "#000",
     marginBottom: 16,
   },
-  searchInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgb(255, 255, 255)",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: "#000",
-  },
   listContainer: {
     padding: 16,
+    paddingTop: 16,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
   },
   orderCard: {
     backgroundColor: "#fff",
@@ -376,10 +476,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
@@ -461,5 +558,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
   },
-})
+});
 
+export default OrdersScreen;

@@ -23,6 +23,8 @@ import { EditProfileScreen } from './src/screens/EditUserProfile';
 import { AddressScreen } from './src/screens/AddressScreen';
 import { OrderDetailsScreen } from './src/screens/OrdersDetailScreen';
 import { CheckoutScreen } from './src/screens/CheckoutScreen';
+import { EmailConfirmationScreen } from './src/screens/EmailConfirmationScreen';
+import { ProfileSetupScreen } from './src/screens/ProfileSetupScreen';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
@@ -106,6 +108,14 @@ function NavigationContent() {
             component={SignUpScreen}
             options={{ headerShown: false }}
           />
+           <Stack.Screen
+            name="EmailConfirmation"
+            component={EmailConfirmationScreen}
+            options={{
+              title: 'EmailConfirmationScreen',
+              headerBackTitle: 'Back',
+            }}
+          />
         </>
       ) : (
         // App screens
@@ -174,6 +184,16 @@ function NavigationContent() {
             component={OrderDetailsScreen}
             options={{
               title: 'Order Details',
+              headerBackTitle: 'Back',
+            }}
+          />
+
+           
+          <Stack.Screen
+            name="ProfileSetup"
+            component={ProfileSetupScreen}
+            options={{
+              title: 'ProfileSetupScreen',
               headerBackTitle: 'Back',
             }}
           />

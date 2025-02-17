@@ -69,17 +69,15 @@ export const SignUpScreen = ({ navigation }: { navigation: any }) => {
         email,
         password,
         options: {
-          emailRedirectTo: 'fiestaa://login',
+          // Change redirect to point to your EmailConfirmation route (deep link)
+          emailRedirectTo: 'fiestaa://emailConfirmation',
         },
       });
 
       if (error) throw error;
 
-      Alert.alert(
-        'Success',
-        'Registration successful! Please check your email to verify your account.',
-        [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
-      );
+      // Navigate to the Email Confirmation screen and pass the email address
+      navigation.navigate('EmailConfirmation', { email });
     } catch (error: any) {
       Alert.alert('Error', error.message);
     } finally {

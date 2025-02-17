@@ -13,7 +13,8 @@ import { useCart } from "../hooks/useCart";
 import { supabase } from "../lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import cuid from 'cuid'; 
+import cuid from "cuid"; 
+
 interface Address {
   id: string;
   label: string;
@@ -109,7 +110,36 @@ export function CartScreen({ navigation }: { navigation: any }) {
     }
   };
 
+  // Group items by restaurantId
+  const groupedItems = cartItems.reduce((acc, item) => {
+    if (!acc[item.restaurantId]) {
+      acc[item.restaurantId] = {
+        name: item.restaurantName,
+        items: [],
+      };
+    }
+    acc[item.restaurantId].items.push(item);
+    return acc;
+  }, {} as Record<string, { name: string; items: typeof cartItems }>);
+
+  // Check if cart has items from more than one restaurant
+  const multipleRestaurants = Object.keys(groupedItems).length > 1;
+
+  const total = cartItems.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0
+  );
+
   const handleCheckout = async () => {
+    // Prevent checkout if items from multiple restaurants are present
+    if (multipleRestaurants) {
+      Alert.alert(
+        "Order Restriction",
+        "You can only order items from one restaurant at a time. Please remove items from other restaurants."
+      );
+      return;
+    }
+    
     try {
       setLoading(true);
       const {
@@ -134,7 +164,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
           .from("Address")
           .insert([
             {
-              id:cuid(),
+              id: cuid(),
               userId: user.id,
               label: newAddress.label || "Home",
               streetAddress: newAddress.streetAddress,
@@ -160,9 +190,9 @@ export function CartScreen({ navigation }: { navigation: any }) {
         return;
       }
 
-      // In CartScreen's handleCheckout function:
+      // Proceed to checkout if only one restaurant's items are in the cart
       navigation.navigate("CheckoutScreen", {
-        deliveryAddress, // Only pass what's needed from local state
+        deliveryAddress, // Pass the selected address info
       });
     } catch (error) {
       console.error("Checkout preparation error:", error);
@@ -171,22 +201,6 @@ export function CartScreen({ navigation }: { navigation: any }) {
       setLoading(false);
     }
   };
-
-  const groupedItems = cartItems.reduce((acc, item) => {
-    if (!acc[item.restaurantId]) {
-      acc[item.restaurantId] = {
-        name: item.restaurantName,
-        items: [],
-      };
-    }
-    acc[item.restaurantId].items.push(item);
-    return acc;
-  }, {} as Record<string, { name: string; items: typeof cartItems }>);
-
-  const total = cartItems.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0
-  );
 
   if (loading) {
     return (
@@ -233,6 +247,13 @@ export function CartScreen({ navigation }: { navigation: any }) {
             ))}
           </View>
         ))}
+
+        {/* If items are from multiple restaurants, show an error message */}
+        {multipleRestaurants && (
+          <Text style={styles.restrictionText}>
+            You can only order items from one restaurant at a time. Please remove items from other restaurants.
+          </Text>
+        )}
 
         {/* Address Section */}
         <View style={styles.addressSection}>
@@ -321,7 +342,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
                 ]}
                 value={newAddress.phoneNumber}
                 onChangeText={(text) => {
-                  const cleanedText = text.replace(/\D/g, ""); // Remove non-numeric characters
+                  const cleanedText = text.replace(/\D/g, "");
                   setNewAddress({ ...newAddress, phoneNumber: cleanedText });
                   setValidationErrors({
                     ...validationErrors,
@@ -338,10 +359,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
               )}
 
               <TextInput
-                style={[
-                  styles.input,
-                  validationErrors.city && styles.inputError,
-                ]}
+                style={[styles.input, validationErrors.city && styles.inputError]}
                 value={newAddress.city}
                 onChangeText={(text) => {
                   setNewAddress({ ...newAddress, city: text });
@@ -354,10 +372,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
               )}
 
               <TextInput
-                style={[
-                  styles.input,
-                  validationErrors.state && styles.inputError,
-                ]}
+                style={[styles.input, validationErrors.state && styles.inputError]}
                 value={newAddress.state}
                 onChangeText={(text) => {
                   setNewAddress({ ...newAddress, state: text.toUpperCase() });
@@ -373,10 +388,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
               )}
 
               <TextInput
-                style={[
-                  styles.input,
-                  validationErrors.zipCode && styles.inputError,
-                ]}
+                style={[styles.input, validationErrors.zipCode && styles.inputError]}
                 value={newAddress.zipCode}
                 onChangeText={(text) => {
                   setNewAddress({ ...newAddress, zipCode: text });
@@ -408,7 +420,11 @@ export function CartScreen({ navigation }: { navigation: any }) {
           <TouchableOpacity
             style={styles.checkoutButton}
             onPress={handleCheckout}
-            disabled={loading || (!selectedAddress && !useNewAddress)}
+            disabled={
+              loading ||
+              (!selectedAddress && !useNewAddress) ||
+              multipleRestaurants
+            }
           >
             <Text style={styles.checkoutButtonText}>
               {loading ? "Processing..." : "Place Order"}

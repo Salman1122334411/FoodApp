@@ -75,45 +75,40 @@ export type Order = {
 };
 
 
-export const searchOrders = async (searchTerm: string): Promise<Order[]> => {
-  if (!searchTerm.trim()) return [];
+export const searchOrders = async (
+  searchTerm: string,
+  userId: string
+): Promise<Order[]> => {
+  if (!searchTerm.trim()) return []; // Return empty array if search term is empty
+
   const { data, error } = await supabase
     .from("Order")
-    .select(`
-      id,
-      "userId",
-      status,
-      "totalAmount",
-      "deliveryAddress",
-      "driverId",
-      "assignedAt",
-      "pickedUpAt",
-      "deliveredAt",
-      "estimatedTime",
-      "actualTime",
-      "driverRating",
-      "createdAt",
-      "updatedAt",
+    .select(
+      `
+      *,
       orderItems:OrderItem (
-         id,
-         "orderId",
-         "menuItemId",
-         quantity,
-         options,
-         price,
-         name,
-         "createdAt",
-         "updatedAt"
-      ),
-      restaurant:Restaurant (
-         id,
-         name
+        id,
+        orderId,
+        menuItemId,
+        quantity,
+        options,
+        price,
+        name,
+        createdAt,
+        updatedAt
       )
-    `)
-    .or(`restaurant.name.ilike.%${searchTerm}%,orderItems.name.ilike.%${searchTerm}%`);
+    `
+    )
+    .eq("userId", userId)
+    // Use ilike on the alias "orderItems.name" (case-insensitive)
+    .ilike("orderItems.name", `%${searchTerm}%`)
+    .order("createdAt", { ascending: false });
+
   if (error) throw error;
   return data || [];
 };
+
+
 export const getRestaurants = async (): Promise<Restaurant[]> => {
   const { data, error } = await supabase
     .from("Restaurant")
