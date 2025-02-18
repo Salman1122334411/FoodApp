@@ -174,6 +174,7 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Menu Items</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  
                   {menuItems.map((item) => (
                     <MenuItemCard
                       key={item.id}
@@ -181,9 +182,10 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
                       onPress={() => {
                         addToRecentSearches(item.label);
                         navigation.navigate("RestaurantDetails", {
-                          restaurant: item.Restaurant || { id: item.restaurantId || item.restaurant_id },
+                          restaurant: item.Restaurant || { id: item.restaurantId},
                           selectedMenuItem: item,
                         });
+                        console.log( item.restaurantId);
                       }}
                     />
                   ))}

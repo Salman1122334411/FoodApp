@@ -39,7 +39,7 @@ export type Restaurant = {
   coverImage: string;
   deliveryTime: string;
   minimumOrder: string;
-  created_at?: string;
+  createdAt?: string;
   menuItems?: MenuItem[];
 };
 
@@ -188,34 +188,48 @@ export const searchMenuItems = async (searchTerm: string) => {
 
   const { data, error } = await supabase
     .from("MenuItem")
-    .select(`*`)
+    .select(`
+      *,
+      Restaurant:restaurantId (
+            id,
+            name,
+            chainName,
+            address,
+            latitude,
+            longitude,
+            cuisineType,
+            segment,
+            city,
+            area,
+            rating,
+            coverImage,
+            deliveryTime,
+            minimumOrder
+      )
+    `)
     .or(`label.ilike.%${searchTerm}%`);
 
   if (error) throw error;
   return data || [];
 };
 
+// Add this helper function to your Supabase utilities
 export const getNearbyRestaurants = async (
-  latitude: number,
-  longitude: number,
-  radiusInKm: number = 5
+  userLat: number,
+  userLon: number,
+  radius: number
 ): Promise<Restaurant[]> => {
-  // Using Postgres earth distance calculation
   const { data, error } = await supabase
-    .from("Restaurant")
-    .select(
-      `
-      *,
-      MenuItem (*),
-      earth_distance(
-        ll_to_earth(${latitude}, ${longitude}),
-        ll_to_earth(latitude, longitude)
-      ) as distance
-    `
-    )
-    .lt("earth_box(ll_to_earth($1, $2), $3)::float", radiusInKm * 1000)
-    .order("distance");
+    .from('Restaurant')
+    .select('*')
+    .lt('distance', radius)
+    .order('distance', { ascending: true })
+    .rpc('nearby_restaurants_rpc', { 
+      user_lat: userLat,
+      user_lon: userLon,
+      max_distance: radius
+    });
 
   if (error) throw error;
-  return data || [];
+  return data as Restaurant[];
 };

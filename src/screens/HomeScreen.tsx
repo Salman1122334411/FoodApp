@@ -16,9 +16,11 @@ import type { Session } from "@supabase/supabase-js";
 import { useNavigation } from "@react-navigation/native";
 // Import the custom location hook
 import { useLocation } from "../hooks/useLocation";
-import SaveLocationModal from './SaveLocationModal'; // Adjust the path as needed
+import SaveLocationModal from "./SaveLocationModal"; // Adjust the path as needed
+
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.7;
+
 const OFFERS = [
   {
     id: "1",
@@ -43,21 +45,58 @@ interface MenuItem {
   image: string;
   restaurantId: string;
   Restaurant?: {
+    id: string;
     name: string;
+    chainName: string;
+    address: string;
+    latitude: number;
+    longitude: number;
+    cuisineType: string;
+    segment: string;
+    city: string;
+    area: string;
+    rating: number;
+    coverImage: string;
+    deliveryTime: string;
+    minimumOrder: string;
   };
 }
+
+// 1. Add the getDistance function (or import it from a utilities file)
+export const getDistance = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number => {
+  const R = 6371; // Radius of the Earth in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in km
+};
 
 export function HomeScreen() {
   const navigation = useNavigation();
   const [restaurants, setRestaurants] = useState<any[]>([]);
+  // 2. New state for storing nearby restaurants only
+  const [nearbyRestaurants, setNearbyRestaurants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [popularMenuItems, setPopularMenuItems] = useState<MenuItem[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
-  // Use the custom hook to access the location state and fetch function.
-  const { currentLocation, fetchLocation } = useLocation();
-console.log("currentLocation:", currentLocation);
+  // Use the custom hook to access location information. 
+  // (Make sure your hook returns coords { latitude, longitude } as well.)
+  const { currentLocation, fetchLocation, coords } = useLocation();
+  console.log("currentLocation:", currentLocation);
+
   useEffect(() => {
     fetchLocation();
   }, [fetchLocation]);
@@ -161,6 +200,23 @@ console.log("currentLocation:", currentLocation);
     setLoading(false);
   };
 
+  // 3. Filter the restaurants based on the current location using getDistance.
+  // This effect runs whenever 'coords' or the full 'restaurants' list changes.
+  useEffect(() => {
+    if (coords && restaurants.length > 0) {
+      const filtered = restaurants.filter((restaurant) => {
+        const distance = getDistance(
+          coords.latitude,
+          coords.longitude,
+          restaurant.latitude,
+          restaurant.longitude
+        );
+        return distance <= 10; // Only include restaurants within 10km
+      });
+      setNearbyRestaurants(filtered);
+    }
+  }, [coords, restaurants]);
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -232,26 +288,30 @@ console.log("currentLocation:", currentLocation);
                 <Image source={{ uri: dish.image }} style={styles.dishImage} />
                 <View style={styles.dishInfo}>
                   <Text style={styles.dishName}>{dish.label}</Text>
-                  <Text style={styles.dishRestaurant}>{dish.Restaurant?.name}</Text>
-                  <Text style={styles.dishPrice}>${dish.price.toFixed(2)}</Text>
+                  <Text style={styles.dishRestaurant}>
+                    {dish.Restaurant?.name}
+                  </Text>
+                  <Text style={styles.dishPrice}>
+                    ${dish.price.toFixed(2)}
+                  </Text>
                 </View>
               </TouchableOpacity>
             ))}
           </ScrollView>
         </View>
 
-        {/* Featured Restaurants */}
+        {/* 4. Nearby Restaurants Section (replacing Featured Restaurants) */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Featured Restaurants</Text>
+            <Text style={styles.sectionTitle}>Nearby Restaurants</Text>
             <TouchableOpacity onPress={() => navigation.navigate("Restaurants")}>
               <Text style={styles.seeAllButton}>See All</Text>
             </TouchableOpacity>
           </View>
           {loading ? (
             <ActivityIndicator size="large" color="#FF4B2B" />
-          ) : restaurants.length > 0 ? (
-            restaurants.map((restaurant) => (
+          ) : nearbyRestaurants.length > 0 ? (
+            nearbyRestaurants.map((restaurant) => (
               <TouchableOpacity
                 key={restaurant.id}
                 style={styles.restaurantCard}
@@ -274,14 +334,18 @@ console.log("currentLocation:", currentLocation);
                 <View style={styles.restaurantInfo}>
                   <View style={styles.restaurantHeader}>
                     <View>
-                      <Text style={styles.restaurantName}>{restaurant.name}</Text>
+                      <Text style={styles.restaurantName}>
+                        {restaurant.name}
+                      </Text>
                       <Text style={styles.restaurantCuisine}>
                         {restaurant.cuisineType} • {restaurant.segment}
                       </Text>
                     </View>
                     <View style={styles.ratingContainer}>
                       <Ionicons name="star" size={16} color="#FFD700" />
-                      <Text style={styles.ratingText}>{restaurant.rating}</Text>
+                      <Text style={styles.ratingText}>
+                        {restaurant.rating}
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.restaurantMeta}>
@@ -291,14 +355,18 @@ console.log("currentLocation:", currentLocation);
                     </View>
                     <View style={styles.metaItem}>
                       <Ionicons name="cash-outline" size={16} color="#6B7280" />
-                      <Text style={styles.metaText}>{restaurant.minimumOrder}</Text>
+                      <Text style={styles.metaText}>
+                        {restaurant.minimumOrder}
+                      </Text>
                     </View>
                   </View>
                 </View>
               </TouchableOpacity>
             ))
           ) : (
-            <Text style={styles.noDataText}>No restaurants available</Text>
+            <Text style={styles.noDataText}>
+              No nearby restaurants available
+            </Text>
           )}
         </View>
       </ScrollView>
@@ -312,7 +380,6 @@ console.log("currentLocation:", currentLocation);
     </SafeAreaView>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {
@@ -545,5 +612,3 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
 });
-
-

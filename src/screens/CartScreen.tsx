@@ -13,7 +13,7 @@ import { useCart } from "../hooks/useCart";
 import { supabase } from "../lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import cuid from "cuid"; 
+import cuid from "cuid";
 
 interface Address {
   id: string;
@@ -139,7 +139,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
       );
       return;
     }
-    
+
     try {
       setLoading(true);
       const {
@@ -251,7 +251,8 @@ export function CartScreen({ navigation }: { navigation: any }) {
         {/* If items are from multiple restaurants, show an error message */}
         {multipleRestaurants && (
           <Text style={styles.restrictionText}>
-            You can only order items from one restaurant at a time. Please remove items from other restaurants.
+            You can only order items from one restaurant at a time. Please
+            remove items from other restaurants.
           </Text>
         )}
 
@@ -359,7 +360,10 @@ export function CartScreen({ navigation }: { navigation: any }) {
               )}
 
               <TextInput
-                style={[styles.input, validationErrors.city && styles.inputError]}
+                style={[
+                  styles.input,
+                  validationErrors.city && styles.inputError,
+                ]}
                 value={newAddress.city}
                 onChangeText={(text) => {
                   setNewAddress({ ...newAddress, city: text });
@@ -372,7 +376,10 @@ export function CartScreen({ navigation }: { navigation: any }) {
               )}
 
               <TextInput
-                style={[styles.input, validationErrors.state && styles.inputError]}
+                style={[
+                  styles.input,
+                  validationErrors.state && styles.inputError,
+                ]}
                 value={newAddress.state}
                 onChangeText={(text) => {
                   setNewAddress({ ...newAddress, state: text.toUpperCase() });
@@ -388,7 +395,10 @@ export function CartScreen({ navigation }: { navigation: any }) {
               )}
 
               <TextInput
-                style={[styles.input, validationErrors.zipCode && styles.inputError]}
+                style={[
+                  styles.input,
+                  validationErrors.zipCode && styles.inputError,
+                ]}
                 value={newAddress.zipCode}
                 onChangeText={(text) => {
                   setNewAddress({ ...newAddress, zipCode: text });
@@ -402,9 +412,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
                 maxLength={10}
               />
               {validationErrors.zipCode && (
-                <Text style={styles.errorText}>
-                  {validationErrors.zipCode}
-                </Text>
+                <Text style={styles.errorText}>{validationErrors.zipCode}</Text>
               )}
             </View>
           )}
@@ -419,12 +427,17 @@ export function CartScreen({ navigation }: { navigation: any }) {
           </View>
           <TouchableOpacity
             style={styles.checkoutButton}
-            onPress={handleCheckout}
-            disabled={
-              loading ||
-              (!selectedAddress && !useNewAddress) ||
-              multipleRestaurants
-            }
+            onPress={() => {
+              if (multipleRestaurants) {
+                Alert.alert(
+                  "Order Restriction",
+                  "You can only order items from one restaurant at a time. Please remove items from other restaurants."
+                );
+              } else {
+                handleCheckout();
+              }
+            }}
+            disabled={loading || (!selectedAddress && !useNewAddress)}
           >
             <Text style={styles.checkoutButtonText}>
               {loading ? "Processing..." : "Place Order"}
@@ -596,6 +609,13 @@ const styles = StyleSheet.create({
   inputError: {
     borderColor: "red",
     borderWidth: 1,
+  },
+  restrictionText: {
+    fontSize: 16,
+    color: "#FF4B2B",
+    textAlign: "center",
+    marginVertical: 10,
+    paddingHorizontal: 16,
   },
   errorText: {
     color: "red",

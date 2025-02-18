@@ -12,25 +12,25 @@ import { useNavigation, RouteProp, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../lib/supabase'; // Import Supabase client
+import { supabase } from '../lib/supabase';
 import { useCart } from '../hooks/useCart';
-import cuid from 'cuid'; // Import cuid to generate unique IDs
+import cuid from 'cuid';
 
+// Use the same naming convention as in CartScreen
 type Address = {
   id: string;
   label: string;
-  street_address: string;
+  streetAddress: string;
   city: string;
   state: string;
-  zip_code: string;
-  phone_number: string;
-  // add additional fields as needed
+  zipCode: string;
+  phoneNumber: string;
 };
 
 type RootStackParamList = {
   Orders: undefined;
   CheckoutScreen: {
-    deliveryAddress: Address; // Only keep what's truly needed
+    deliveryAddress: Address;
   };
 };
 
@@ -54,12 +54,13 @@ export function CheckoutScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      // Group items by restaurant
+      // Group items by restaurant (we assume only one restaurant is in the cart)
       const restaurantGroups = cartItems.reduce((acc, item) => {
         const key = item.restaurantId;
         if (!acc[key]) {
           acc[key] = {
             restaurantId: item.restaurantId,
+            restaurantName: item.restaurantName,
             items: [],
             total: 0,
           };
@@ -73,36 +74,33 @@ export function CheckoutScreen() {
       for (const restaurantId of Object.keys(restaurantGroups)) {
         const group = restaurantGroups[restaurantId];
 
-        // Generate a random order ID using cuid
+        // Generate a unique order ID using cuid
         const orderId = cuid();
         // Get current timestamp in ISO format
         const currentTimestamp = new Date().toISOString();
 
-        // Create the delivery address string from the selected address
-        const deliveryAddressString = deliveryAddress
-        ? `${deliveryAddress.streetAddress}, ${deliveryAddress.city}, ${deliveryAddress.state}, ${deliveryAddress.zipCode}`
-        : "";
+        // Create the full delivery address string
+        const deliveryAddressString = `${deliveryAddress.streetAddress}, ${deliveryAddress.city}, ${deliveryAddress.state}, ${deliveryAddress.zipCode}`;
 
-        // Create order record with the generated orderId and current timestamp for updatedAt
+        // Insert the order record
         const { data: orderData, error: orderError } = await supabase
-          .from('Order') // Adjust table name if needed
+          .from('Order')
           .insert([{
             id: orderId,
             userId: user.id,
             restaurantId: restaurantId,
             status: 'PENDING',
             totalAmount: group.total,
-            deliveryAddress: deliveryAddressString, // now sending the formatted string
+            deliveryAddress: deliveryAddressString,
             paymentMethod: paymentMethod,
             updatedAt: currentTimestamp,
           }])
           .select('id')
           .single();
           
-        console.log("Order Payload:", orderData);
         if (orderError) throw orderError;
         
-        // Map order items for the order using the generated orderId
+        // Prepare order items for insertion
         const orderItems = group.items.map((item: any) => ({
           id: cuid(),
           orderId: orderId,
@@ -115,13 +113,13 @@ export function CheckoutScreen() {
 
         // Insert order items
         const { error: itemsError } = await supabase
-          .from('OrderItem') // Adjust table name if needed
+          .from('OrderItem')
           .insert(orderItems);
 
         if (itemsError) throw itemsError;
       }
       
-      clearCart(); // Clear cart after success
+      clearCart(); // Clear the cart upon successful order placement
       navigation.navigate('Orders');
       Alert.alert('Success', 'Order placed successfully!');
     } catch (error) {
@@ -147,11 +145,33 @@ export function CheckoutScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Delivery Address</Text>
           <Text style={styles.addressText}>{deliveryAddress.label}</Text>
-          <Text style={styles.addressText}>{deliveryAddress.street_address}</Text>
+          <Text style={styles.addressText}>{deliveryAddress.streetAddress}</Text>
           <Text style={styles.addressText}>
-            {deliveryAddress.city}, {deliveryAddress.state} {deliveryAddress.zip_code}
+            {deliveryAddress.city}, {deliveryAddress.state} {deliveryAddress.zipCode}
           </Text>
-          <Text style={styles.addressText}>{deliveryAddress.phone_number}</Text>
+          <Text style={styles.addressText}>{deliveryAddress.phoneNumber}</Text>
+        </View>
+
+        {/* Order Details Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Order Details</Text>
+          {cartItems.length > 0 && (
+            <>
+              <Text style={styles.restaurantName}>
+                Restaurant: {cartItems[0].restaurantName}
+              </Text>
+              {cartItems.map(item => (
+                <View key={item.id} style={styles.orderItem}>
+                  <Text style={styles.orderItemName}>
+                    {item.name} x {item.quantity}
+                  </Text>
+                  <Text style={styles.orderItemPrice}>
+                    ${(item.price * item.quantity).toFixed(2)}
+                  </Text>
+                </View>
+              ))}
+            </>
+          )}
         </View>
 
         {/* Payment Method Section */}
@@ -213,61 +233,71 @@ export function CheckoutScreen() {
   );
 }
 
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   content: {
     flex: 1,
+    paddingHorizontal: 16,
   },
   section: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    marginVertical: 12,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 8,
     color: '#1F2937',
-    marginBottom: 16,
   },
   addressText: {
     fontSize: 16,
     color: '#4B5563',
     marginBottom: 4,
   },
-  paymentOptions: {
+  restaurantName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 8,
+  },
+  orderItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  orderItemName: {
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  orderItemPrice: {
+    fontSize: 16,
+    color: '#FF4B2B',
+  },
+  paymentOptions: {
+    flexDirection: 'row',
   },
   paymentOption: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     borderRadius: 8,
-    marginHorizontal: 4,
+    marginRight: 12,
   },
   selectedPaymentOption: {
     borderColor: '#FF4B2B',
-    backgroundColor: '#FFF5F5',
   },
   paymentOptionText: {
     marginLeft: 8,
-    fontSize: 14,
-    color: '#6B7280',
+    fontSize: 16,
+    color: '#4B5563',
   },
   selectedPaymentOptionText: {
     color: '#FF4B2B',
+    fontWeight: 'bold',
   },
   summaryRow: {
     flexDirection: 'row',
@@ -275,44 +305,48 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   summaryText: {
-    fontSize: 14,
-    color: '#6B7280',
+    fontSize: 16,
+    color: '#4B5563',
   },
   summaryValue: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 16,
     color: '#1F2937',
   },
   totalRow: {
-    marginTop: 8,
-    paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderColor: '#E5E7EB',
+    paddingTop: 8,
   },
   totalText: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     color: '#1F2937',
   },
   totalValue: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     color: '#FF4B2B',
   },
   footer: {
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderColor: '#E5E7EB',
+    backgroundColor: '#fff',
   },
   placeOrderButton: {
     backgroundColor: '#FF4B2B',
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 8,
     alignItems: 'center',
   },
   placeOrderButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

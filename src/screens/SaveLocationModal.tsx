@@ -10,8 +10,8 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocation } from '../hooks/useLocation'; // Your custom hook for location
-import { useAddress } from '../hooks/useAddress';   // Your custom hook for address management
+import { useLocation } from '../hooks/useLocation'; // Custom hook for location
+import { useAddress } from '../hooks/useAddress';   // Custom hook for address management
 
 interface SaveLocationModalProps {
   visible: boolean;
@@ -24,16 +24,16 @@ export default function SaveLocationModal({
   onClose,
   onAddressAdded,
 }: SaveLocationModalProps) {
-  // Destructure the correct property: currentLocation (not "location")
-  const { fetchLocation, currentLocation } = useLocation();
+  // Destructure both currentLocation and coords from useLocation
+  const { fetchLocation, currentLocation, coords } = useLocation();
   const { addAddress } = useAddress();
 
-  // Local state for the form fields and flags
+  // Local state for form fields and flags
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [defaultAddress, setDefaultAddress] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
-  // The new address to be created using the current location
+  // Extend the address state to include latitude and longitude.
   const [address, setAddress] = useState({
     label: '',
     zipCode: '',
@@ -42,9 +42,11 @@ export default function SaveLocationModal({
     city: '',
     state: '',
     isDefault: false,
+    latitude: null as number | null,
+    longitude: null as number | null,
   });
 
-  // When modal opens, fetch the current location
+  // When the modal opens, fetch the current location.
   useEffect(() => {
     if (visible) {
       setLoadingLocation(true);
@@ -57,7 +59,7 @@ export default function SaveLocationModal({
           setLoadingLocation(false);
         });
     } else {
-      // Reset form state when the modal is closed
+      // Reset state when modal is closed.
       setAddress({
         label: '',
         zipCode: '',
@@ -66,31 +68,37 @@ export default function SaveLocationModal({
         city: '',
         state: '',
         isDefault: false,
+        latitude: null,
+        longitude: null,
       });
       setValidationErrors({});
       setDefaultAddress(false);
     }
   }, [visible, fetchLocation]);
 
-  // When the currentLocation value updates, update the address details
+  // When currentLocation or coords update, update the address details.
   useEffect(() => {
     if (
       visible &&
       currentLocation &&
+      coords &&
       !currentLocation.includes('Error') &&
       currentLocation !== 'Fetching current location...'
     ) {
+      // You can split the currentLocation string if needed.
       const parts = currentLocation.split(',');
       setAddress((prev) => ({
         ...prev,
         streetAddress: parts[0] ? parts[0].trim() : '',
         city: parts[1] ? parts[1].trim() : '',
         state: parts[2] ? parts[2].trim() : '',
+        latitude: coords.latitude,
+        longitude: coords.longitude,
       }));
     }
-  }, [currentLocation, visible]);
+  }, [currentLocation, visible, coords]);
 
-  // Validate only the required fields for the current location address
+  // Validate required fields.
   const validate = () => {
     let errors: Record<string, string> = {};
 
@@ -112,7 +120,7 @@ export default function SaveLocationModal({
     return Object.keys(errors).length === 0;
   };
 
-  // Handler for saving the current location as a new address
+  // Handler for saving the address, now including latitude and longitude.
   const handleSave = async () => {
     if (!validate()) return;
 
@@ -193,7 +201,7 @@ export default function SaveLocationModal({
                   style={modalStyles.checkbox}
                 >
                   {defaultAddress && (
-                    <Ionicons name="checkmark" size={20} color="#fff" />
+                    <Ionicons name="checkmark" size={20} color="#3B82F6" />
                   )}
                 </TouchableOpacity>
                 <Text style={modalStyles.defaultText}>Set as default address</Text>
@@ -259,11 +267,14 @@ const modalStyles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 4,
-    backgroundColor: '#FF4B2B',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#D1D5DB',  // A standard gray color for unchecked state
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
   },
+
   defaultText: {
     fontSize: 16,
     color: '#333',
