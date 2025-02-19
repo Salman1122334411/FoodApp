@@ -112,7 +112,7 @@ function NavigationContent() {
             name="EmailConfirmation"
             component={EmailConfirmationScreen}
             options={{
-              title: 'EmailConfirmationScreen',
+              title: 'Email Confirmation Screen',
               headerBackTitle: 'Back',
             }}
           />
@@ -148,7 +148,7 @@ function NavigationContent() {
             name="EditProfile" 
             component={EditProfileScreen}
             options={{ 
-              title: 'EditProfile',
+              title: 'Edit Profile',
               headerStyle: {
                 backgroundColor: '#FF6B6B',
               },
@@ -193,7 +193,7 @@ function NavigationContent() {
             name="ProfileSetup"
             component={ProfileSetupScreen}
             options={{
-              title: 'ProfileSetupScreen',
+              title: 'Profile Setup',
               headerBackTitle: 'Back',
             }}
           />

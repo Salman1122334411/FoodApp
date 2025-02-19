@@ -40,7 +40,7 @@ export interface Order {
     | "PENDING"
     | "CONFIRMED"
     | "PREPARING"
-    | "READY"
+    | "OUT_FOR_DELIVERY"
     | "DELIVERED"
     | "CANCELLED";
   totalAmount: number;
@@ -71,7 +71,12 @@ const SearchBar = memo(
   }) => {
     return (
       <View style={searchBarStyles.container}>
-        <Ionicons name="search" size={24} color="#6B7280" style={searchBarStyles.searchIcon} />
+        <Ionicons
+          name="search"
+          size={24}
+          color="#6B7280"
+          style={searchBarStyles.searchIcon}
+        />
         <TextInput
           style={searchBarStyles.input}
           placeholder="Search orders by item name"
@@ -144,7 +149,9 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
           setIsSearching(true);
         }
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!user) throw new Error("No user found");
 
         let query;
@@ -271,7 +278,7 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
         return "#60A5FA";
       case "PREPARING":
         return "#818CF8";
-      case "READY":
+      case "OUT_FOR_DELIVERY":
         return "#34D399";
       case "DELIVERED":
         return "#10B981";
@@ -290,7 +297,7 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
         return "checkmark-circle-outline";
       case "PREPARING":
         return "restaurant-outline";
-      case "READY":
+      case "OUT_FOR_DELIVERY":
         return "bicycle-outline";
       case "DELIVERED":
         return "checkmark-done-circle-outline";
@@ -300,7 +307,12 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
         return "help-circle-outline";
     }
   };
-
+  const formatStatus = (status: string) => {
+    return status
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+  };
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString("en-US", {
@@ -324,11 +336,14 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
           </Text>
           <Text style={styles.orderDate}>{formatDate(item.createdAt)}</Text>
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
+        <View
+          style={[
+            styles.statusBadge,
+            { backgroundColor: getStatusColor(item.status) },
+          ]}
+        >
           <Ionicons name={getStatusIcon(item.status)} size={16} color="#fff" />
-          <Text style={styles.statusText}>
-            {item.status.charAt(0).toUpperCase() + item.status.slice(1).toLowerCase()}
-          </Text>
+          <Text style={styles.statusText}>{formatStatus(item.status)}</Text>
         </View>
       </View>
 
@@ -347,7 +362,11 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
 
       <View style={styles.orderFooter}>
         <Text style={styles.totalItems}>
-          {item.orderItems.reduce((sum, orderItem) => sum + orderItem.quantity, 0)} items
+          {item.orderItems.reduce(
+            (sum, orderItem) => sum + orderItem.quantity,
+            0
+          )}{" "}
+          items
         </Text>
         <Text style={styles.totalAmount}>${item.totalAmount.toFixed(2)}</Text>
       </View>
@@ -420,7 +439,9 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
                   style={styles.browseButton}
                   onPress={() => navigation.navigate("Restaurants")}
                 >
-                  <Text style={styles.browseButtonText}>Browse Restaurants</Text>
+                  <Text style={styles.browseButtonText}>
+                    Browse Restaurants
+                  </Text>
                 </TouchableOpacity>
               </>
             )}
@@ -446,7 +467,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#fff", // Matches the SearchScreen background
     paddingTop: -35,
-
   },
   header: {
     justifyContent: "flex-end",

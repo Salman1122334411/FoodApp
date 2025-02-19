@@ -194,7 +194,7 @@ export function ProfileScreen() {
 
         <TouchableOpacity 
           style={styles.actionButton}
-          onPress={() => navigation.navigate('Favorites' as never)}
+          onPress={() => navigation.navigate('ProfileSetup' as never)}
         >
           <Ionicons name="heart-outline" size={24} color="#FF4B2B" />
           <Text style={styles.actionButtonText}>Favorites</Text>

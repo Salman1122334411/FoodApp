@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   View,
   Text,
@@ -27,7 +27,13 @@ interface Order {
   id: string;
   userId: string;
   restaurantId: string;
-  status: "PENDING" | "CONFIRMED" | "PREPARING" | "READY" | "DELIVERED" | "CANCELLED";
+  status:
+    | "PENDING"
+    | "CONFIRMED"
+    | "PREPARING"
+    | "OUT_FOR_DELIVERY"
+    | "DELIVERED"
+    | "CANCELLED";
   totalAmount: number;
   deliveryAddress: string;
   driverId: string | null;
@@ -66,20 +72,57 @@ export function OrderDetailsScreen({
   // Define the steps for order progress
   const steps = [
     { status: "PENDING", label: "Order Placed", icon: "receipt-outline" },
-    { status: "CONFIRMED", label: "Order Confirmed", icon: "checkmark-circle-outline" },
+    {
+      status: "CONFIRMED",
+      label: "Order Confirmed",
+      icon: "checkmark-circle-outline",
+    },
     { status: "PREPARING", label: "Preparing", icon: "restaurant-outline" },
-    { status: "READY", label: "Ready for Delivery", icon: "bicycle-outline" },
-    { status: "DELIVERED", label: "Delivered", icon: "checkmark-done-circle-outline" },
+    {
+      status: "OUT_FOR_DELIVERY",
+      label: "Out for Delivery",
+      icon: "bicycle-outline",
+    },
+    {
+      status: "DELIVERED",
+      label: "Delivered",
+      icon: "checkmark-done-circle-outline",
+    },
   ];
-
-  const currentStepIndex = steps.findIndex((step) => step.status === order.status);
+  const formatStatus = (status: string) => {
+    return status
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+  };
+  const getStatusColor = (status: Order["status"]) => {
+    switch (status) {
+      case "PENDING":
+        return "#FCD34D";
+      case "CONFIRMED":
+        return "#60A5FA";
+      case "PREPARING":
+        return "#818CF8";
+      case "OUT_FOR_DELIVERY":
+        return "#34D399";
+      case "DELIVERED":
+        return "#10B981";
+      case "CANCELLED":
+        return "#EF4444";
+      default:
+        return "#6B7280";
+    }
+  };
+  const currentStepIndex = steps.findIndex(
+    (step) => step.status === order.status
+  );
   const computedProgress =
     order.status === "CANCELLED"
       ? 0
       : currentStepIndex !== -1
       ? Math.round((currentStepIndex / (steps.length - 1)) * 100)
       : 0;
-  const progressColor = order.status === "CONFIRMED" ? "#FF0000" : "#4A90E2";
+  const progressColor = order.status === "CANCELLED" ? "#FF0000" : "#4A90E2";
 
   const getStatusSteps = () => {
     return steps.map((step, index) => ({
@@ -100,8 +143,13 @@ export function OrderDetailsScreen({
           <Text style={styles.orderId}>Order #{order.id.slice(-6)}</Text>
           <Text style={styles.orderDate}>{formatDate(order.createdAt)}</Text>
         </View>
-        <View style={styles.statusBadge}>
-          <Text style={styles.statusText}>{order.status}</Text>
+        <View
+          style={[
+            styles.statusBadge,
+            { backgroundColor: getStatusColor(order.status) },
+          ]}
+        >
+          <Text style={styles.statusText}>{formatStatus(order.status)}</Text>
         </View>
       </View>
 
@@ -112,7 +160,7 @@ export function OrderDetailsScreen({
           strokeWidth={10}
           color={progressColor}
         />
-        <Text style={styles.statusLabel}>{order.status}</Text>
+        <Text style={styles.statusLabel}> {formatStatus(order.status)}</Text>
       </View>
 
       <View style={styles.timeline}>
@@ -129,7 +177,7 @@ export function OrderDetailsScreen({
                 <Ionicons
                   name={step.icon as any}
                   size={16}
-                  color={step.isCurrent ? "#fff" : "#9CA3AF"}
+                  color={step.isCurrent ? "#fff" : "#fff"}
                 />
               </View>
               <View
@@ -157,7 +205,7 @@ export function OrderDetailsScreen({
         <View style={styles.restaurantInfo}>
           <Ionicons name="restaurant-outline" size={24} color="#4B5563" />
           <Text style={styles.restaurantName}>
-            {order.restaurant ? order.restaurant.name : 'Restaurant'}
+            {order.restaurant ? order.restaurant.name : "Restaurant"}
           </Text>
         </View>
       </View>
@@ -216,12 +264,12 @@ const styles = StyleSheet.create({
   section: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: "#E5E7EB",
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: "600",
+    color: "#1F2937",
     marginBottom: 12,
   },
   header: {
@@ -245,7 +293,6 @@ const styles = StyleSheet.create({
   statusBadge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: "#FCD34D",
     borderRadius: 16,
   },
   statusText: {
@@ -310,82 +357,82 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   restaurantInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   restaurantName: {
     fontSize: 16,
-    color: '#4B5563',
+    color: "#4B5563",
     marginLeft: 8,
   },
   addressContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
   },
   address: {
     flex: 1,
     fontSize: 16,
-    color: '#4B5563',
+    color: "#4B5563",
     marginLeft: 8,
   },
   orderItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 12,
   },
   orderItemInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   orderItemQuantity: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#FF4B2B',
+    fontWeight: "600",
+    color: "#FF4B2B",
     marginRight: 8,
   },
   orderItemName: {
     fontSize: 16,
-    color: '#4B5563',
+    color: "#4B5563",
   },
   orderItemPrice: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: "600",
+    color: "#1F2937",
   },
   totalContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: "#E5E7EB",
   },
   totalLabel: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: "600",
+    color: "#1F2937",
   },
   totalAmount: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FF4B2B',
+    fontWeight: "bold",
+    color: "#FF4B2B",
   },
   supportButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 16,
     marginHorizontal: 16,
     marginVertical: 24,
-    backgroundColor: '#FFF1F0',
+    backgroundColor: "#FFF1F0",
     borderRadius: 12,
   },
   supportButtonText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#FF4B2B',
+    fontWeight: "600",
+    color: "#FF4B2B",
     marginLeft: 8,
   },
 });

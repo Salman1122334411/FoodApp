@@ -223,7 +223,7 @@ export function HomeScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Hello, {userName || "User"}! 👋</Text>
+            <Text style={styles.greeting}>Hello, {userName}! 👋</Text>
             <TouchableOpacity
               style={styles.locationButton}
               onPress={() => setModalVisible(true)}

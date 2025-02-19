@@ -147,12 +147,18 @@ export const RestaurantDetailsScreen = ({ route, navigation }: { route: any; nav
         </View>
       </View>
 
-      <FlatList
-        data={menuItems}
-        renderItem={renderMenuItem}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.menuList}
-      />
+      {menuItems.length === 0 ? (
+  <View style={styles.noItemsContainer}>
+    <Text style={styles.noItemsText}>No items available now</Text>
+  </View>
+) : (
+  <FlatList
+    data={menuItems}
+    renderItem={renderMenuItem}
+    keyExtractor={(item) => item.id.toString()}
+    contentContainerStyle={styles.menuList}
+  />
+)}
 
       {cartItems.length > 0 && (
         <TouchableOpacity
@@ -343,4 +349,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+  noItemsContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  noItemsText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#6B7280',
+  },
+  
 });
