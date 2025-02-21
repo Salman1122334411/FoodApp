@@ -179,6 +179,8 @@ function NavigationContent() {
               headerBackTitle: 'Back',
             }}
           />
+
+
           <Stack.Screen
             name="OrderDetails"
             component={OrderDetailsScreen}
@@ -197,6 +199,9 @@ function NavigationContent() {
               headerBackTitle: 'Back',
             }}
           />
+
+
+          
           <Stack.Screen
             name="CheckoutScreen"
             component={CheckoutScreen}

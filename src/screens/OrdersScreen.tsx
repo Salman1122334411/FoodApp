@@ -97,7 +97,6 @@ const searchBarStyles = StyleSheet.create({
     backgroundColor: "rgb(255,255,255)",
     borderRadius: 12,
     paddingHorizontal: 12,
-    // Removed extra marginBottom so it fits well within the header.
   },
   searchIcon: {
     marginRight: 8,
@@ -266,6 +265,44 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
     setRefreshing(true);
     fetchOrders(debouncedSearchTerm);
   }, [debouncedSearchTerm, fetchOrders]);
+
+  // ----------------------
+  // Realtime Subscription for Orders
+  // ----------------------
+  useEffect(() => {
+    let subscription;
+    async function setupRealtime() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      subscription = supabase
+        .channel("orders")
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "Order",
+            filter: `userId=eq.${user.id}`,
+          },
+          (payload) => {
+            console.log("Realtime order update:", payload);
+            // Re-fetch orders to reflect realtime updates
+            fetchOrders(debouncedSearchTerm);
+          }
+        )
+        .subscribe();
+    }
+    setupRealtime();
+
+    return () => {
+      if (subscription) {
+        supabase.removeChannel(subscription);
+      }
+    };
+  }, [fetchOrders, debouncedSearchTerm]);
 
   // ----------------------
   // Helpers for Order Card

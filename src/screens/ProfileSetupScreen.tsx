@@ -1,9 +1,20 @@
-import { useState, useEffect } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from "react-native";
+import React, { useState, useEffect } from "react";
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TextInput, 
+  TouchableOpacity, 
+  Alert,
+  ActivityIndicator 
+} from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { supabase } from "../lib/supabase";
+import { useNavigation } from "@react-navigation/native";
 
 export const ProfileSetupScreen = () => {
+  const navigation = useNavigation();
+  const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -34,25 +45,29 @@ export const ProfileSetupScreen = () => {
 
   const handleSave = async () => {
     try {
+      // Start the loading indicator.
+      setLoading(true);
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) throw new Error("No user found");
 
       // Combine day, month, and year into a date.
-      // Note: In JavaScript Date, months are 0-indexed.
       const dobDate = new Date(
         Number(selectedYear),
         Number(selectedMonth) - 1,
         Number(selectedDay)
       );
 
-      // Optional: validate dobDate
+      // Validate the date.
       if (isNaN(dobDate.getTime())) {
         Alert.alert("Error", "Please select a valid date of birth.");
+        setLoading(false);
         return;
       }
 
+      // Upsert the user profile.
       const { error } = await supabase.from("User").upsert({
         id: user.id,
         email: email,
@@ -65,9 +80,15 @@ export const ProfileSetupScreen = () => {
       if (error) throw error;
 
       Alert.alert("Success", "Profile updated successfully");
+
+      // Navigate to HomeScreen.
+      navigation.replace("HomeScreen");
     } catch (error) {
       console.error("Error updating profile:", error);
       Alert.alert("Error", "Failed to update profile. Please try again.");
+    } finally {
+      // Stop the loading indicator.
+      setLoading(false);
     }
   };
 
@@ -137,7 +158,11 @@ export const ProfileSetupScreen = () => {
       </View>
 
       <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-        <Text style={styles.saveButtonText}>Save Profile</Text>
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.saveButtonText}>Save Profile</Text>
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -192,3 +217,5 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
 });
+
+export default ProfileSetupScreen;

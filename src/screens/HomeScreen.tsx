@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,17 +7,19 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  Dimensions,
+  Dimensions,Modal
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../lib/supabase";
 import type { Session } from "@supabase/supabase-js";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation,useFocusEffect  } from "@react-navigation/native";
 // Import the custom location hook
 import { useLocation } from "../hooks/useLocation";
 import SaveLocationModal from "./SaveLocationModal"; // Adjust the path as needed
-
+// Import the getDistance utility from our new file.
+import { getDistance } from "../utils/geo";
+import ProfileSetupModal from "./ProfileSetupModal";
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.7;
 
@@ -26,14 +28,12 @@ const OFFERS = [
     id: "1",
     title: "50% OFF",
     description: "On your first order",
-    image: "https://your-cdn.com/offers/1.jpg",
     color: "#FF5A5F",
   },
   {
     id: "2",
     title: "Free Delivery",
     description: "On orders above $20",
-    image: "https://your-cdn.com/offers/2.jpg",
     color: "#00A699",
   },
 ];
@@ -62,44 +62,52 @@ interface MenuItem {
   };
 }
 
-// 1. Add the getDistance function (or import it from a utilities file)
-export const getDistance = (
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number => {
-  const R = 6371; // Radius of the Earth in km
-  const dLat = (lat2 - lat1) * (Math.PI / 180);
-  const dLon = (lon2 - lon1) * (Math.PI / 180);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * (Math.PI / 180)) *
-      Math.cos(lat2 * (Math.PI / 180)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // Distance in km
-};
-
 export function HomeScreen() {
   const navigation = useNavigation();
   const [restaurants, setRestaurants] = useState<any[]>([]);
-  // 2. New state for storing nearby restaurants only
   const [nearbyRestaurants, setNearbyRestaurants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [popularMenuItems, setPopularMenuItems] = useState<MenuItem[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
-  // Use the custom hook to access location information. 
-  // (Make sure your hook returns coords { latitude, longitude } as well.)
+  const [defaultAddressCoords, setDefaultAddressCoords] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  // Use the custom location hook.
   const { currentLocation, fetchLocation, coords } = useLocation();
   console.log("currentLocation:", currentLocation);
 
   useEffect(() => {
     fetchLocation();
   }, [fetchLocation]);
+
+
+   // Check the user's profile on screen focus.
+
+   useFocusEffect(
+    useCallback(() => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          supabase
+            .from("User")
+            .select("*")
+            .eq("id", session.user.id)
+            .single()
+            .then(({ data, error }) => {
+              if (error || !data) {
+                // Profile doesn't exist: show the modal.
+                setShowProfileModal(true);
+              } else {
+                setShowProfileModal(false);
+              }
+            });
+        }
+      });
+    }, [])
+  );
 
   useEffect(() => {
     const fetchPopularMenuItems = async () => {
@@ -128,7 +136,7 @@ export function HomeScreen() {
             minimumOrder
           )
         `)
-        .order("createdAt", { ascending: false })
+        .order("createdAt", { ascending: true })
         .limit(10);
 
       if (error) {
@@ -136,7 +144,6 @@ export function HomeScreen() {
         return;
       }
 
-      // Filter out items to only show one per restaurant
       const uniqueItems: MenuItem[] = [];
       const seenRestaurants = new Set<string>();
       data?.forEach((item: MenuItem) => {
@@ -146,17 +153,79 @@ export function HomeScreen() {
         }
       });
 
-      // Limit to at most 5 items
       setPopularMenuItems(uniqueItems.slice(0, 5));
     };
 
     fetchPopularMenuItems();
   }, []);
 
+ // Check the user's profile on screen focus.
+ useFocusEffect(
+  useCallback(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        supabase
+          .from("User")
+          .select("*")
+          .eq("id", session.user.id)
+          .single()
+          .then(({ data, error }) => {
+            if (error || !data) {
+              // Profile doesn't exist: show the modal.
+              setShowProfileModal(true);
+            } else {
+              setShowProfileModal(false);
+            }
+          });
+      }
+    });
+  }, [])
+);
+useEffect(() => {
+  if (!session) return;
+
+  const userSubscription = supabase
+    .channel("user-changes")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "User",
+        filter: `id=eq.${session.user.id}`,
+      },
+      (payload) => {
+        if (payload.new && payload.new.name) {
+          setUserName(payload.new.name);
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(userSubscription);
+  };
+}, [session]);
+  // Fetch user profile and default address once.
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) fetchUserProfile(session.user.id);
+      if (session) {
+        fetchUserProfile(session.user.id);
+        fetchDefaultAddress(session.user.id);
+      }
+    });
+    fetchRestaurants();
+  }, []);
+
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) {
+        fetchUserProfile(session.user.id);
+        fetchDefaultAddress(session.user.id);
+      }
     });
     fetchRestaurants();
   }, []);
@@ -172,7 +241,28 @@ export function HomeScreen() {
     else setUserName(data?.name || "User");
   };
 
-  const fetchRestaurants = async () => {
+  const fetchDefaultAddress = async (userId: string) => {
+    const { data, error } = await supabase
+      .from("Address")
+      .select("latitude, longitude")
+      .eq("userId", userId)
+      .eq("isDefault", true)
+      .single();
+
+    if (error) {
+      console.error("Error fetching default address:", error.message);
+      return;
+    }
+    if (data && data.latitude && data.longitude) {
+      setDefaultAddressCoords({
+        latitude: data.latitude,
+        longitude: data.longitude,
+      });
+    }
+  };
+
+  // Wrap fetchRestaurants in useCallback so it can be used in our realtime effect.
+  const fetchRestaurants = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("Restaurant")
@@ -198,27 +288,56 @@ export function HomeScreen() {
     if (error) console.error("Error fetching restaurants:", error.message);
     else setRestaurants(data || []);
     setLoading(false);
-  };
+  }, []);
 
-  // 3. Filter the restaurants based on the current location using getDistance.
-  // This effect runs whenever 'coords' or the full 'restaurants' list changes.
+  // Subscribe to realtime changes in the Restaurant table.
   useEffect(() => {
-    if (coords && restaurants.length > 0) {
+    const restaurantSubscription = supabase
+      .channel("restaurants")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "Restaurant" },
+        (payload) => {
+          console.log("Realtime restaurant update:", payload);
+          fetchRestaurants();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(restaurantSubscription);
+    };
+  }, [fetchRestaurants]);
+
+  // Filter restaurants based on effective coordinates (either current location or default address).
+  useEffect(() => {
+    const effectiveCoords = coords || defaultAddressCoords;
+    if (effectiveCoords && restaurants.length > 0) {
       const filtered = restaurants.filter((restaurant) => {
         const distance = getDistance(
-          coords.latitude,
-          coords.longitude,
+          effectiveCoords.latitude,
+          effectiveCoords.longitude,
           restaurant.latitude,
           restaurant.longitude
         );
-        return distance <= 10; // Only include restaurants within 10km
+        return distance <= 10;
       });
       setNearbyRestaurants(filtered);
     }
-  }, [coords, restaurants]);
+  }, [coords, defaultAddressCoords, restaurants]);
 
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#FF6B6B" />
+      </View>
+    );
+  }
   return (
     <SafeAreaView style={styles.container}>
+       <Modal visible={showProfileModal} animationType="slide">
+        <ProfileSetupModal onProfileSetupSuccess={() => setShowProfileModal(false)} />
+      </Modal>
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
@@ -611,4 +730,5 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     marginTop: 24,
   },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
 });

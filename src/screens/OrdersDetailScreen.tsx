@@ -1,21 +1,23 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Platform,
   Linking,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { CircularProgress } from "../../components/CircularProgress";
+import { supabase } from "../lib/supabase";
 
 interface OrderItem {
   id: string;
   name: string;
   price: number;
   quantity: number;
+  // Include any other fields as needed (options, createdAt, updatedAt, etc.)
 }
 
 interface Restaurant {
@@ -23,7 +25,7 @@ interface Restaurant {
   name: string;
 }
 
-interface Order {
+export interface Order {
   id: string;
   userId: string;
   restaurantId: string;
@@ -46,7 +48,7 @@ interface Order {
   driverRating: number | null;
   createdAt: string;
   updatedAt: string;
-  orderItems: OrderItem[];
+  orderItems?: OrderItem[];
   restaurant?: Restaurant;
 }
 
@@ -57,6 +59,18 @@ export function OrderDetailsScreen({
 }) {
   const { order } = route.params;
 
+  // Initialize state with defaults for restaurant and orderItems
+  const [currentOrder, setCurrentOrder] = useState<Order>(() => ({
+    ...order,
+    restaurant: order.restaurant || { id: "", name: "Restaurant" },
+    orderItems: order.orderItems || [],
+  }));
+
+  // Loading and last-updated states
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(new Date());
+
+  // Date formatting helper
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleString("en-US", {
@@ -69,32 +83,21 @@ export function OrderDetailsScreen({
     });
   };
 
-  // Define the steps for order progress
+  // Order progress steps
   const steps = [
     { status: "PENDING", label: "Order Placed", icon: "receipt-outline" },
-    {
-      status: "CONFIRMED",
-      label: "Order Confirmed",
-      icon: "checkmark-circle-outline",
-    },
+    { status: "CONFIRMED", label: "Order Confirmed", icon: "checkmark-circle-outline" },
     { status: "PREPARING", label: "Preparing", icon: "restaurant-outline" },
-    {
-      status: "OUT_FOR_DELIVERY",
-      label: "Out for Delivery",
-      icon: "bicycle-outline",
-    },
-    {
-      status: "DELIVERED",
-      label: "Delivered",
-      icon: "checkmark-done-circle-outline",
-    },
+    { status: "OUT_FOR_DELIVERY", label: "Out for Delivery", icon: "bicycle-outline" },
+    { status: "DELIVERED", label: "Delivered", icon: "checkmark-done-circle-outline" },
   ];
-  const formatStatus = (status: string) => {
-    return status
+
+  const formatStatus = (status: string) =>
+    status
       .split("_")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(" ");
-  };
+
   const getStatusColor = (status: Order["status"]) => {
     switch (status) {
       case "PENDING":
@@ -113,43 +116,129 @@ export function OrderDetailsScreen({
         return "#6B7280";
     }
   };
+
   const currentStepIndex = steps.findIndex(
-    (step) => step.status === order.status
+    (step) => step.status === currentOrder.status
   );
+
   const computedProgress =
-    order.status === "CANCELLED"
+    currentOrder.status === "CANCELLED"
       ? 0
       : currentStepIndex !== -1
       ? Math.round((currentStepIndex / (steps.length - 1)) * 100)
       : 0;
-  const progressColor = order.status === "CANCELLED" ? "#FF0000" : "#4A90E2";
 
-  const getStatusSteps = () => {
-    return steps.map((step, index) => ({
+  const progressColor =
+    currentOrder.status === "CANCELLED" ? "#FF0000" : "#4A90E2";
+
+  const getStatusSteps = () =>
+    steps.map((step, index) => ({
       ...step,
       isCompleted: index < currentStepIndex,
       isCurrent: index === currentStepIndex,
     }));
-  };
 
   const handleSupport = () => {
     Linking.openURL("tel:+1234567890");
   };
 
+  // Fetch order with joined orderItems and restaurant details
+  useEffect(() => {
+    const fetchOrder = async () => {
+      const { data, error } = await supabase
+        .from("Order")
+        .select(`
+          id,
+          "userId",
+          status,
+          "totalAmount",
+          "deliveryAddress",
+          "driverId",
+          "assignedAt",
+          "pickedUpAt",
+          "deliveredAt",
+          "estimatedTime",
+          "actualTime",
+          "driverRating",
+          "createdAt",
+          "updatedAt",
+          orderItems:OrderItem(
+             id,
+             "orderId",
+             "menuItemId",
+             quantity,
+             options,
+             price,
+             name,
+             "createdAt",
+             "updatedAt"
+          ),
+          restaurant:Restaurant(
+             id,
+             name
+          )
+        `)
+        .eq("id", order.id)
+        .single();
+
+      if (error) {
+        console.error("Error fetching order:", error);
+        Alert.alert("Error", "Failed to load order");
+      } else if (data) {
+        // Ensure orderItems is an array
+        setCurrentOrder({ ...data, orderItems: data.orderItems || [] });
+      }
+      setLoading(false);
+    };
+
+    fetchOrder();
+  }, [order.id]);
+
+  // Realtime subscription for updates
+  useEffect(() => {
+    const channel = supabase
+      .channel("schema-db-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "Order",
+          filter: `id=eq.${order.id}`,
+        },
+        (payload) => {
+          setCurrentOrder((prev) => ({
+            ...prev,
+            ...((payload.new as Order) || {}),
+            orderItems: ((payload.new as Order)?.orderItems) || prev.orderItems || [],
+          }));
+          setLastUpdated(new Date());
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [order.id]);
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text>Loading...</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.orderId}>Order #{order.id.slice(-6)}</Text>
-          <Text style={styles.orderDate}>{formatDate(order.createdAt)}</Text>
+          <Text style={styles.orderId}>Order #{currentOrder.id.slice(-6)}</Text>
+          <Text style={styles.orderDate}>{formatDate(currentOrder.createdAt)}</Text>
         </View>
-        <View
-          style={[
-            styles.statusBadge,
-            { backgroundColor: getStatusColor(order.status) },
-          ]}
-        >
-          <Text style={styles.statusText}>{formatStatus(order.status)}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(currentOrder.status) }]}>
+          <Text style={styles.statusText}>{formatStatus(currentOrder.status)}</Text>
         </View>
       </View>
 
@@ -160,7 +249,7 @@ export function OrderDetailsScreen({
           strokeWidth={10}
           color={progressColor}
         />
-        <Text style={styles.statusLabel}> {formatStatus(order.status)}</Text>
+        <Text style={styles.statusLabel}>{formatStatus(currentOrder.status)}</Text>
       </View>
 
       <View style={styles.timeline}>
@@ -174,25 +263,11 @@ export function OrderDetailsScreen({
                   step.isCompleted && styles.timelineDotCompleted,
                 ]}
               >
-                <Ionicons
-                  name={step.icon as any}
-                  size={16}
-                  color={step.isCurrent ? "#fff" : "#fff"}
-                />
+                <Ionicons name={step.icon as any} size={16} color="#fff" />
               </View>
-              <View
-                style={[
-                  styles.timelineLine,
-                  step.isCompleted && styles.timelineLineCompleted,
-                ]}
-              />
+              <View style={[styles.timelineLine, step.isCompleted && styles.timelineLineCompleted]} />
             </View>
-            <Text
-              style={[
-                styles.timelineLabel,
-                step.isCurrent && styles.timelineLabelActive,
-              ]}
-            >
+            <Text style={[styles.timelineLabel, step.isCurrent && styles.timelineLabelActive]}>
               {step.label}
             </Text>
           </View>
@@ -205,7 +280,7 @@ export function OrderDetailsScreen({
         <View style={styles.restaurantInfo}>
           <Ionicons name="restaurant-outline" size={24} color="#4B5563" />
           <Text style={styles.restaurantName}>
-            {order.restaurant ? order.restaurant.name : "Restaurant"}
+            {currentOrder.restaurant ? currentOrder.restaurant.name : "Restaurant"}
           </Text>
         </View>
       </View>
@@ -214,13 +289,13 @@ export function OrderDetailsScreen({
         <View style={styles.addressContainer}>
           <Ionicons name="location-outline" size={24} color="#4B5563" />
           <Text style={styles.address}>
-            {order.deliveryAddress
+            {currentOrder.deliveryAddress
               ? (() => {
                   try {
-                    const address = JSON.parse(order.deliveryAddress);
+                    const address = JSON.parse(currentOrder.deliveryAddress);
                     return `${address.label} - ${address.street_address}, ${address.city}, ${address.state}`;
                   } catch {
-                    return order.deliveryAddress;
+                    return currentOrder.deliveryAddress;
                   }
                 })()
               : "No address provided"}
@@ -229,7 +304,7 @@ export function OrderDetailsScreen({
       </View>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Order Items</Text>
-        {order.orderItems.map((item, index) => (
+        {(currentOrder.orderItems || []).map((item, index) => (
           <View key={index} style={styles.orderItem}>
             <View style={styles.orderItemInfo}>
               <Text style={styles.orderItemQuantity}>{item.quantity}x</Text>
@@ -243,7 +318,7 @@ export function OrderDetailsScreen({
         <View style={styles.totalContainer}>
           <Text style={styles.totalLabel}>Total Amount</Text>
           <Text style={styles.totalAmount}>
-            ${order.totalAmount.toFixed(2)}
+            ${currentOrder.totalAmount.toFixed(2)}
           </Text>
         </View>
       </View>
@@ -352,6 +427,11 @@ const styles = StyleSheet.create({
     color: "#666666",
     marginTop: 6,
   },
+  updateText: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginTop: 4,
+  },
   timelineLabelActive: {
     color: "#1A1A1A",
     fontWeight: "500",
@@ -368,6 +448,11 @@ const styles = StyleSheet.create({
   addressContainer: {
     flexDirection: "row",
     alignItems: "flex-start",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
   address: {
     flex: 1,
@@ -436,3 +521,4 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
+export default OrderDetailsScreen;

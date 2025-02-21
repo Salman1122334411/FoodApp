@@ -16,19 +16,25 @@ import { Restaurant, MenuItem } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useCart } from '../hooks/useCart';
 import { searchRestaurants, searchMenuItems } from '../lib/supabase';
+import { useNavigation } from '@react-navigation/native';
+// Import the custom location hook
+import { useLocation } from '../hooks/useLocation';
+// Import the getDistance utility
+import { getDistance } from '../utils/geo';
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
   useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
     return () => clearTimeout(handler);
   }, [value, delay]);
   return debouncedValue;
 }
 
 export const RestaurantListScreen = ({ navigation }: { navigation: any }) => {
+  // Store the full fetched list separately
+  const [allRestaurants, setAllRestaurants] = useState<Restaurant[]>([]);
+  // 'restaurants' state holds the nearby (filtered) restaurants
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -37,27 +43,102 @@ export const RestaurantListScreen = ({ navigation }: { navigation: any }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
-  useEffect(() => {
-    if (debouncedSearchTerm.trim()) {
-      performSearch(debouncedSearchTerm.trim());
-    } else {
-      fetchRestaurants();
-    }
-  }, [debouncedSearchTerm]);
+  // --- Location & Default Address State ---
+  const { currentLocation, fetchLocation, coords } = useLocation();
+  const [defaultAddressCoords, setDefaultAddressCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  // Effective coordinates: current device location if available, otherwise the default address.
+  const effectiveCoords = coords || defaultAddressCoords;
+  //---------------------------------------------
 
+  // Fetch current location on mount.
+  useEffect(() => {
+    fetchLocation();
+  }, [fetchLocation]);
+
+  // Fetch the user's default address coordinates (if any).
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        fetchDefaultAddress(session.user.id);
+      }
+    });
+  }, []);
+
+  // --- Fetch Default Address Function ---
+  const fetchDefaultAddress = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('Address')
+      .select('latitude, longitude')
+      .eq('userId', userId)
+      .eq('isDefault', true)
+      .single();
+    if (error) {
+      console.error('Error fetching default address:', error.message);
+      return;
+    }
+    if (data && data.latitude && data.longitude) {
+      setDefaultAddressCoords({ latitude: data.latitude, longitude: data.longitude });
+    }
+  };
+  //-----------------------------------------
+
+  // Fetch all restaurants (unfiltered) from Supabase.
+  const fetchRestaurants = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('Restaurant')
+        .select(`*, MenuItem (*)`)
+        .order('rating', { ascending: false });
+      if (error) {
+        setError('Error fetching restaurants: ' + error.message);
+        return;
+      }
+      setAllRestaurants(data || []);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError('Unexpected error: ' + errMsg);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Initially fetch all restaurants.
+  useEffect(() => {
+    fetchRestaurants();
+  }, []);
+
+  // Whenever effectiveCoords or the full list changes, filter restaurants by distance.
+  useEffect(() => {
+    if (effectiveCoords && allRestaurants.length > 0) {
+      const filtered = allRestaurants.filter((restaurant: Restaurant) => {
+        const distance = getDistance(
+          effectiveCoords.latitude,
+          effectiveCoords.longitude,
+          restaurant.latitude,
+          restaurant.longitude
+        );
+        return distance <= 10; // Only include restaurants within 10 km
+      });
+      setRestaurants(filtered);
+    } else {
+      // If no effective coordinates, show no restaurants.
+      setRestaurants([]);
+    }
+  }, [effectiveCoords, allRestaurants]);
+
+  // Perform search and then filter search results by distance.
   const performSearch = async (term: string) => {
     setLoading(true);
     try {
       const [restaurantResults, menuItemResults] = await Promise.all([
-        searchRestaurants(term),
-        searchMenuItems(term),
+        searchRestaurants(term, effectiveCoords.latitude, effectiveCoords.longitude),
+        searchMenuItems(term, effectiveCoords.latitude, effectiveCoords.longitude),
       ]);
-
       const restaurantIdsFromName = restaurantResults.map(r => r.id);
       const restaurantIdsFromMenu = menuItemResults.map(mi => mi.restaurantId);
-      const allRestaurantIds = Array.from(
-        new Set([...restaurantIdsFromName, ...restaurantIdsFromMenu])
-      );
+      const allRestaurantIds = Array.from(new Set([...restaurantIdsFromName, ...restaurantIdsFromMenu]));
 
       if (allRestaurantIds.length === 0) {
         setRestaurants([]);
@@ -70,10 +151,9 @@ export const RestaurantListScreen = ({ navigation }: { navigation: any }) => {
         .select('*, MenuItem(*)')
         .in('id', allRestaurantIds)
         .order('rating', { ascending: false });
-
       if (error) throw error;
 
-      const processedRestaurants = data.map(restaurant => {
+      let processedRestaurants = data.map((restaurant: Restaurant) => {
         if (restaurantIdsFromName.includes(restaurant.id)) {
           return restaurant;
         } else {
@@ -83,6 +163,18 @@ export const RestaurantListScreen = ({ navigation }: { navigation: any }) => {
           return { ...restaurant, MenuItem: filteredMenuItems };
         }
       });
+
+      if (effectiveCoords) {
+        processedRestaurants = processedRestaurants.filter((restaurant: Restaurant) => {
+          const distance = getDistance(
+            effectiveCoords.latitude,
+            effectiveCoords.longitude,
+            restaurant.latitude,
+            restaurant.longitude
+          );
+          return distance <= 10;
+        });
+      }
       setRestaurants(processedRestaurants);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Search failed.');
@@ -91,32 +183,14 @@ export const RestaurantListScreen = ({ navigation }: { navigation: any }) => {
     }
   };
 
-  const fetchRestaurants = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('Restaurant')
-        .select(`*, MenuItem (*)`)
-        .order('rating', { ascending: false });
-      if (error) {
-        setError('Error fetching restaurants: ' + error.message);
-        return;
-      }
-      if (data) {
-        setRestaurants(data);
-      }
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : 'Unknown error occurred';
-      setError('Unexpected error: ' + errMsg);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
+  // Re-run search when the debounced search term changes.
   useEffect(() => {
-    fetchRestaurants();
-  }, []);
+    if (debouncedSearchTerm.trim()) {
+      performSearch(debouncedSearchTerm.trim());
+    } else {
+      fetchRestaurants();
+    }
+  }, [debouncedSearchTerm]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -250,20 +324,6 @@ export const RestaurantListScreen = ({ navigation }: { navigation: any }) => {
         }
         keyboardShouldPersistTaps="handled"
       />
-      {cartItems.length > 0 && (
-        <TouchableOpacity 
-          style={styles.cartButton}
-          onPress={() => navigation.navigate('Cart')}
-        >
-          <Ionicons name="cart" size={24} color="#fff" />
-          <Text style={styles.cartButtonText}>
-            View Cart ({cartItems.reduce((sum, item) => sum + item.quantity, 0)} items)
-          </Text>
-          <Text style={styles.cartButtonPrice}>
-            ${cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0).toFixed(2)}
-          </Text>
-        </TouchableOpacity>
-      )}
     </SafeAreaView>
   );
 };

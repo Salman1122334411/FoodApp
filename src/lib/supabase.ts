@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { getDistance } from "../utils/geo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
@@ -173,17 +174,42 @@ export const getRestaurantsByFilters = async ({
 };
 
 // In your supabase helper file
-export const searchRestaurants = async (searchTerm: string) => {
+export const searchRestaurants = async (
+  searchTerm: string,
+  latitude: number,
+  longitude: number,
+  radius: number = 10
+) => {
   if (!searchTerm.trim()) return []; // Return empty array if search term is empty
   const { data, error } = await supabase
     .from("Restaurant")
     .select("*")
     .ilike("name", `%${searchTerm}%`);
   if (error) throw error;
-  return data || [];
+
+  // Filter the data using getDistance so that only restaurants within the radius are returned.
+  const filteredData = (data || []).filter((restaurant: any) => {
+    // Ensure the restaurant has valid coordinates
+    if (!restaurant.latitude || !restaurant.longitude) return false;
+    return getDistance(latitude, longitude, restaurant.latitude, restaurant.longitude) <= radius;
+  });
+  return filteredData;
 };
 
-export const searchMenuItems = async (searchTerm: string) => {
+/**
+ * Search menu items by label and filter by their restaurant's location.
+ * @param searchTerm The text to search for.
+ * @param latitude User's latitude.
+ * @param longitude User's longitude.
+ * @param radius Radius in km (default: 10 km).
+ * @returns Array of nearby menu items.
+ */
+export const searchMenuItems = async (
+  searchTerm: string,
+  latitude: number,
+  longitude: number,
+  radius: number = 10
+) => {
   if (!searchTerm.trim()) return []; // Return empty array if search term is empty
 
   const { data, error } = await supabase
@@ -191,26 +217,42 @@ export const searchMenuItems = async (searchTerm: string) => {
     .select(`
       *,
       Restaurant:restaurantId (
-            id,
-            name,
-            chainName,
-            address,
-            latitude,
-            longitude,
-            cuisineType,
-            segment,
-            city,
-            area,
-            rating,
-            coverImage,
-            deliveryTime,
-            minimumOrder
+        id,
+        name,
+        chainName,
+        address,
+        latitude,
+        longitude,
+        cuisineType,
+        segment,
+        city,
+        area,
+        rating,
+        coverImage,
+        deliveryTime,
+        minimumOrder
       )
     `)
     .or(`label.ilike.%${searchTerm}%`);
-
   if (error) throw error;
-  return data || [];
+
+  // Filter menu items based on the Restaurant's coordinates.
+  const filteredData = (data || []).filter((menuItem: any) => {
+    if (
+      !menuItem.Restaurant ||
+      !menuItem.Restaurant.latitude ||
+      !menuItem.Restaurant.longitude
+    ) {
+      return false;
+    }
+    return getDistance(
+      latitude,
+      longitude,
+      menuItem.Restaurant.latitude,
+      menuItem.Restaurant.longitude
+    ) <= radius;
+  });
+  return filteredData;
 };
 
 // Add this helper function to your Supabase utilities

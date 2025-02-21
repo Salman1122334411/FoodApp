@@ -13,10 +13,21 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { searchRestaurants, searchMenuItems, getRestaurants, getRestaurantsByFilters } from "../lib/supabase";
+import {
+  searchRestaurants,
+  searchMenuItems,
+  getRestaurants,
+  getRestaurantsByFilters,
+} from "../lib/supabase";
 import { useCart } from "../hooks/useCart";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import { useNavigation } from "@react-navigation/native";
+// Import the custom location hook
+import { useLocation } from "../hooks/useLocation";
+// Import the getDistance utility
+import { getDistance } from "../utils/geo";
+import { supabase } from "../lib/supabase";
 
 const { width } = Dimensions.get("window");
 
@@ -30,10 +41,53 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
   const [cuisineTypes, setCuisineTypes] = useState<string[]>([]);
   const [selectedCuisine, setSelectedCuisine] = useState<string | null>(null);
   const [cuisineRestaurants, setCuisineRestaurants] = useState<any[]>([]);
-  const [cuisineLoading, setCuisineLoading] = useState(false); // New loading state for cuisine
+  const [cuisineLoading, setCuisineLoading] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const scrollY = new Animated.Value(0);
+
+  // --- Location & Default Address State ---
+  const { currentLocation, fetchLocation, coords } = useLocation();
+  const [defaultAddressCoords, setDefaultAddressCoords] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  // Effective coordinates: use current location if available, otherwise default address.
+  const effectiveCoords = coords || defaultAddressCoords;
+  //---------------------------------------------
+
+  // Fetch current location on mount.
+  useEffect(() => {
+    fetchLocation();
+  }, [fetchLocation]);
+
+  // Fetch the user's default address coordinates.
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        fetchDefaultAddress(session.user.id);
+      }
+    });
+  }, []);
+
+  const fetchDefaultAddress = async (userId: string) => {
+    const { data, error } = await supabase
+      .from("Address")
+      .select("latitude, longitude")
+      .eq("userId", userId)
+      .eq("isDefault", true)
+      .single();
+    if (error) {
+      console.error("Error fetching default address:", error.message);
+      return;
+    }
+    if (data && data.latitude && data.longitude) {
+      setDefaultAddressCoords({
+        latitude: data.latitude,
+        longitude: data.longitude,
+      });
+    }
+  };
 
   const addToRecentSearches = (term: string) => {
     if (term.trim()) {
@@ -50,19 +104,33 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
     }
   };
 
+  // Fetch search results using effective coordinates.
   useEffect(() => {
     let isActive = true;
     const fetchResults = async () => {
       if (searchQuery.trim().length >= 1) {
         setLoading(true);
         try {
-          const [restaurantResults, menuItemResults] = await Promise.all([
-            searchRestaurants(searchQuery),
-            searchMenuItems(searchQuery),
-          ]);
-          if (isActive) {
-            setRestaurants(restaurantResults);
-            setMenuItems(menuItemResults);
+          if (effectiveCoords) {
+            const [restaurantResults, menuItemResults] = await Promise.all([
+              searchRestaurants(
+                searchQuery,
+                effectiveCoords.latitude,
+                effectiveCoords.longitude
+              ),
+              searchMenuItems(
+                searchQuery,
+                effectiveCoords.latitude,
+                effectiveCoords.longitude
+              ),
+            ]);
+            if (isActive) {
+              setRestaurants(restaurantResults);
+              setMenuItems(menuItemResults);
+            }
+          } else {
+            setRestaurants([]);
+            setMenuItems([]);
           }
         } catch (error) {
           console.error(error);
@@ -80,27 +148,54 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
     return () => {
       isActive = false;
     };
-  }, [searchQuery]);
+  }, [searchQuery, effectiveCoords]);
 
+  // Fetch popular cuisines only from nearby restaurants.
   useEffect(() => {
     const fetchCuisineTypes = async () => {
       try {
         const allRestaurants = await getRestaurants();
-        const cuisines = Array.from(new Set(allRestaurants.map((r: any) => r.cuisineType)));
+        let filteredRestaurants = allRestaurants;
+        if (effectiveCoords) {
+          filteredRestaurants = allRestaurants.filter((r: any) => {
+            const distance = getDistance(
+              effectiveCoords.latitude,
+              effectiveCoords.longitude,
+              r.latitude,
+              r.longitude
+            );
+            return distance <= 10;
+          });
+        } else {
+          filteredRestaurants = [];
+        }
+        const cuisines = Array.from(
+          new Set(filteredRestaurants.map((r: any) => r.cuisineType))
+        );
         setCuisineTypes(cuisines);
       } catch (error) {
         console.error("Error fetching cuisines: ", error);
       }
     };
     fetchCuisineTypes();
-  }, []);
+  }, [effectiveCoords]);
 
+  // Fetch restaurants for the selected cuisine, then filter by location.
   useEffect(() => {
-    if (selectedCuisine) {
+    if (selectedCuisine && effectiveCoords) {
       setCuisineLoading(true);
       getRestaurantsByFilters({ cuisineType: selectedCuisine })
         .then((filtered) => {
-          setCuisineRestaurants(filtered);
+          const nearby = filtered.filter((r: any) => {
+            const distance = getDistance(
+              effectiveCoords.latitude,
+              effectiveCoords.longitude,
+              r.latitude,
+              r.longitude
+            );
+            return distance <= 10;
+          });
+          setCuisineRestaurants(nearby);
           setCuisineLoading(false);
         })
         .catch((error) => {
@@ -110,7 +205,7 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
     } else {
       setCuisineRestaurants([]);
     }
-  }, [selectedCuisine]);
+  }, [selectedCuisine, effectiveCoords]);
 
   const handleCuisinePress = (cuisine: string) => {
     if (selectedCuisine === cuisine) {
@@ -132,7 +227,12 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
         <BlurView intensity={20} style={StyleSheet.absoluteFill} />
         <Text style={styles.title}>Craving something delicious?</Text>
         <View style={styles.searchInputContainer}>
-          <Ionicons name="search" size={24} color="#6B7280" style={styles.searchIcon} />
+          <Ionicons
+            name="search"
+            size={24}
+            color="#6B7280"
+            style={styles.searchIcon}
+          />
           <TextInput
             style={styles.searchInput}
             placeholder="Search for restaurants or dishes"
@@ -146,12 +246,19 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
 
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
         scrollEventThrottle={16}
         contentContainerStyle={styles.scrollContent}
       >
         {loading ? (
-          <ActivityIndicator size="large" color="#FF6B6B" style={styles.loader} />
+          <ActivityIndicator
+            size="large"
+            color="#FF6B6B"
+            style={styles.loader}
+          />
         ) : (
           <>
             {restaurants.length > 0 && (
@@ -174,7 +281,6 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Menu Items</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  
                   {menuItems.map((item) => (
                     <MenuItemCard
                       key={item.id}
@@ -182,10 +288,9 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
                       onPress={() => {
                         addToRecentSearches(item.label);
                         navigation.navigate("RestaurantDetails", {
-                          restaurant: item.Restaurant || { id: item.restaurantId},
+                          restaurant: item.Restaurant || { id: item.restaurantId },
                           selectedMenuItem: item,
                         });
-                        console.log( item.restaurantId);
                       }}
                     />
                   ))}
@@ -208,7 +313,9 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
                   ))}
                 </View>
               ) : (
-                <Text style={styles.noRecentSearches}>Fresh start. Find something tasty!</Text>
+                <Text style={styles.noRecentSearches}>
+                  Fresh start. Find something tasty!
+                </Text>
               )}
             </View>
 
@@ -216,7 +323,10 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
               <Text style={styles.sectionTitle}>Popular Cuisines</Text>
               {cuisineTypes.map((cuisine) => (
                 <View key={cuisine}>
-                  <TouchableOpacity style={styles.cuisineItem} onPress={() => handleCuisinePress(cuisine)}>
+                  <TouchableOpacity
+                    style={styles.cuisineItem}
+                    onPress={() => handleCuisinePress(cuisine)}
+                  >
                     <Text style={styles.cuisineName}>{cuisine}</Text>
                     <Ionicons
                       name={selectedCuisine === cuisine ? "chevron-up" : "chevron-down"}
@@ -227,16 +337,18 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
                   {selectedCuisine === cuisine && (
                     <View style={styles.cuisineDropdown}>
                       {cuisineLoading ? (
-                        <ActivityIndicator size="small" color="#FF6B2B" style={styles.loader} />
+                        <ActivityIndicator
+                          size="small"
+                          color="#FF6B2B"
+                          style={styles.loader}
+                        />
                       ) : (
                         cuisineRestaurants.map((restaurant) => (
                           <RestaurantCard
                             key={restaurant.id}
                             restaurant={restaurant}
                             onPress={() =>
-                              navigation.navigate("RestaurantDetails", {
-                                restaurant,
-                              })
+                              navigation.navigate("RestaurantDetails", { restaurant })
                             }
                           />
                         ))
@@ -253,7 +365,13 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
   );
 };
 
-const RestaurantCard = ({ restaurant, onPress }: { restaurant: any; onPress: () => void }) => (
+const RestaurantCard = ({
+  restaurant,
+  onPress,
+}: {
+  restaurant: any;
+  onPress: () => void;
+}) => (
   <TouchableOpacity style={styles.restaurantCard} onPress={onPress}>
     <Image
       source={{ uri: restaurant.coverImage || "https://via.placeholder.com/150" }}
@@ -265,7 +383,9 @@ const RestaurantCard = ({ restaurant, onPress }: { restaurant: any; onPress: () 
       <View style={styles.restaurantMeta}>
         <View style={styles.ratingContainer}>
           <Ionicons name="star" size={16} color="#FFD700" />
-          <Text style={styles.ratingText}>{restaurant.rating ? restaurant.rating.toFixed(1) : ""}</Text>
+          <Text style={styles.ratingText}>
+            {restaurant.rating ? restaurant.rating.toFixed(1) : ""}
+          </Text>
         </View>
         <Text style={styles.deliveryTime}>
           {restaurant.deliveryTime ? `${restaurant.deliveryTime} min` : ""}
@@ -275,7 +395,13 @@ const RestaurantCard = ({ restaurant, onPress }: { restaurant: any; onPress: () 
   </TouchableOpacity>
 );
 
-const MenuItemCard = ({ item, onPress }: { item: any; onPress: () => void }) => (
+const MenuItemCard = ({
+  item,
+  onPress,
+}: {
+  item: any;
+  onPress: () => void;
+}) => (
   <TouchableOpacity style={styles.menuItemCard} onPress={onPress}>
     <Image
       source={{ uri: item.image || "https://via.placeholder.com/150" }}
