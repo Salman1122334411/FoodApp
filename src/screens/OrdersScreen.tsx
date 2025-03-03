@@ -451,14 +451,14 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
         renderItem={renderOrderItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={["#FF6B6B"]}
-            tintColor="#FF6B6B"
-          />
-        }
+        // refreshControl={
+        //   <RefreshControl
+        //     refreshing={refreshing}
+        //     onRefresh={onRefresh}
+        //     colors={["#FF6B6B"]}
+        //     tintColor="#FF6B6B"
+        //   />
+        // }
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { useNativeDriver: false }
@@ -466,28 +466,21 @@ export function OrdersScreen({ navigation }: { navigation: any }) {
         scrollEventThrottle={16}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            {isSearching ? (
-              <ActivityIndicator size="large" color="#FF6B6B" />
-            ) : (
-              <>
-                <Ionicons name="receipt-outline" size={64} color="#9CA3AF" />
-                <Text style={styles.emptyText}>No orders found</Text>
-                <TouchableOpacity
-                  style={styles.browseButton}
-                  onPress={() => navigation.navigate("Restaurants")}
-                >
-                  <Text style={styles.browseButtonText}>
-                    Browse Restaurants
-                  </Text>
-                </TouchableOpacity>
-              </>
-            )}
+            <Ionicons name="receipt-outline" size={64} color="#9CA3AF" />
+            <Text style={styles.emptyText}>No orders found</Text>
+            <TouchableOpacity
+              style={styles.browseButton}
+              onPress={() => navigation.navigate("Restaurants")}
+            >
+              <Text style={styles.browseButtonText}>Browse Restaurants</Text>
+            </TouchableOpacity>
           </View>
         }
+        
         ListHeaderComponent={
-          <View style={{ marginBottom: 16 }}>
+          <View style={styles.loadingContainer}>
             {isSearching && !refreshing && (
-              <ActivityIndicator size="small" color="#FF6B6B" />
+             <ActivityIndicator size="small" color="#FF6B6B" />
             )}
           </View>
         }

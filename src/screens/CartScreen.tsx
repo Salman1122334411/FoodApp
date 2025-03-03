@@ -14,7 +14,7 @@ import { supabase } from "../lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import cuid from "cuid";
-
+import { getDistance } from "../utils/geo"; // Make sure this utility is available
 interface Address {
   id: string;
   label: string;
@@ -189,7 +189,47 @@ export function CartScreen({ navigation }: { navigation: any }) {
         Alert.alert("Error", "Please select or add a delivery address");
         return;
       }
+      const restaurantId = Object.keys(groupedItems)[0];
+      // Fetch restaurant details (including its location)
+      const { data: restaurantData, error: restaurantError } = await supabase
+        .from("Restaurant")
+        .select("id, latitude, longitude")
+        .eq("id", restaurantId)
+        .single();
 
+      if (restaurantError || !restaurantData) {
+        throw new Error("Failed to fetch restaurant data");
+      }
+      // Ensure both the address and restaurant have valid coordinates.
+      if (
+        !deliveryAddress.latitude ||
+        !deliveryAddress.longitude ||
+        !restaurantData.latitude ||
+        !restaurantData.longitude
+      ) {
+        Alert.alert(
+          "Invalid Address Error",
+          "Missing location information for the address or restaurant."
+        );
+        return;
+      }
+
+      // Calculate the distance using the utility function.
+      const distance = getDistance(
+        deliveryAddress.latitude,
+        deliveryAddress.longitude,
+        restaurantData.latitude,
+        restaurantData.longitude
+      );
+
+      // If the address is too far (e.g., more than 10 km), show a modal alert.
+      if (distance > 10) {
+        Alert.alert(
+          "Address Out of Range",
+          "The current location selected does not have that restaurant available in its area. Please choose a different address."
+        );
+        return;
+      }
       // Proceed to checkout if only one restaurant's items are in the cart
       navigation.navigate("CheckoutScreen", {
         deliveryAddress, // Pass the selected address info
@@ -221,9 +261,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
               <View key={item.name} style={styles.cartItem}>
                 <View style={styles.itemInfo}>
                   <Text style={styles.itemName}>{item.name}</Text>
-                  <Text style={styles.itemPrice}>
-                    ${(item.price * item.quantity).toFixed(2)}
-                  </Text>
+                  <Text style={styles.itemPrice}>${item.price.toFixed(2)}</Text>
                 </View>
                 <View style={styles.quantityContainer}>
                   <TouchableOpacity
@@ -269,7 +307,11 @@ export function CartScreen({ navigation }: { navigation: any }) {
             <Ionicons name="location-outline" size={24} color="#FF4B2B" />
             <Text style={styles.addressOptionText}>Manage Saved Addresses</Text>
           </TouchableOpacity>
-
+          {addresses.length === 0 && !useNewAddress && (
+              <Text style={styles.noAddressMessage}>
+                No saved addresses available.
+              </Text>
+            )}
           {addresses.length > 0 && !useNewAddress && (
             <View style={styles.savedAddresses}>
               {addresses.map((address) => (
@@ -302,120 +344,6 @@ export function CartScreen({ navigation }: { navigation: any }) {
             </View>
           )}
 
-          <TouchableOpacity
-            style={[
-              styles.addressOption,
-              useNewAddress && styles.selectedOption,
-            ]}
-            onPress={() => setUseNewAddress(true)}
-          >
-            <Ionicons name="add-circle-outline" size={24} color="#FF4B2B" />
-            <Text style={styles.addressOptionText}>Add New Address</Text>
-          </TouchableOpacity>
-
-          {useNewAddress && (
-            <View style={styles.form}>
-              <TextInput
-                style={[
-                  styles.input,
-                  validationErrors.streetAddress && styles.inputError,
-                ]}
-                value={newAddress.streetAddress}
-                onChangeText={(text) => {
-                  setNewAddress({ ...newAddress, streetAddress: text });
-                  setValidationErrors({
-                    ...validationErrors,
-                    streetAddress: undefined,
-                  });
-                }}
-                placeholder="Street Address"
-              />
-              {validationErrors.streetAddress && (
-                <Text style={styles.errorText}>
-                  {validationErrors.streetAddress}
-                </Text>
-              )}
-
-              <TextInput
-                style={[
-                  styles.input,
-                  validationErrors.phoneNumber && styles.inputError,
-                ]}
-                value={newAddress.phoneNumber}
-                onChangeText={(text) => {
-                  const cleanedText = text.replace(/\D/g, "");
-                  setNewAddress({ ...newAddress, phoneNumber: cleanedText });
-                  setValidationErrors({
-                    ...validationErrors,
-                    phoneNumber: undefined,
-                  });
-                }}
-                placeholder="Phone Number"
-                keyboardType="phone-pad"
-              />
-              {validationErrors.phoneNumber && (
-                <Text style={styles.errorText}>
-                  {validationErrors.phoneNumber}
-                </Text>
-              )}
-
-              <TextInput
-                style={[
-                  styles.input,
-                  validationErrors.city && styles.inputError,
-                ]}
-                value={newAddress.city}
-                onChangeText={(text) => {
-                  setNewAddress({ ...newAddress, city: text });
-                  setValidationErrors({ ...validationErrors, city: undefined });
-                }}
-                placeholder="City"
-              />
-              {validationErrors.city && (
-                <Text style={styles.errorText}>{validationErrors.city}</Text>
-              )}
-
-              <TextInput
-                style={[
-                  styles.input,
-                  validationErrors.state && styles.inputError,
-                ]}
-                value={newAddress.state}
-                onChangeText={(text) => {
-                  setNewAddress({ ...newAddress, state: text.toUpperCase() });
-                  setValidationErrors({
-                    ...validationErrors,
-                    state: undefined,
-                  });
-                }}
-                placeholder="State"
-              />
-              {validationErrors.state && (
-                <Text style={styles.errorText}>{validationErrors.state}</Text>
-              )}
-
-              <TextInput
-                style={[
-                  styles.input,
-                  validationErrors.zipCode && styles.inputError,
-                ]}
-                value={newAddress.zipCode}
-                onChangeText={(text) => {
-                  setNewAddress({ ...newAddress, zipCode: text });
-                  setValidationErrors({
-                    ...validationErrors,
-                    zipCode: undefined,
-                  });
-                }}
-                placeholder="Postal Code"
-                keyboardType="numeric"
-                maxLength={10}
-              />
-              {validationErrors.zipCode && (
-                <Text style={styles.errorText}>{validationErrors.zipCode}</Text>
-              )}
-            </View>
-          )}
         </View>
       </ScrollView>
 
@@ -490,6 +418,12 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#FF4B2B",
     marginTop: 4,
+  },
+  noAddressMessage: {
+    color: '#888',
+    fontSize: 16,
+    textAlign: 'center',
+    marginVertical: 10,
   },
   quantityContainer: {
     flexDirection: "row",

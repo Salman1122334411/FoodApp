@@ -87,30 +87,35 @@ export function HomeScreen() {
 
    // Check the user's profile on screen focus.
 
-   useFocusEffect(
-    useCallback(() => {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) {
-          supabase
-            .from("User")
-            .select("*")
-            .eq("id", session.user.id)
-            .single()
-            .then(({ data, error }) => {
-              if (error || !data) {
-                // Profile doesn't exist: show the modal.
-                setShowProfileModal(true);
-              } else {
-                setShowProfileModal(false);
-              }
-            });
-        }
-      });
-    }, [])
-  );
+  //  useFocusEffect(
+  //   useCallback(() => {
+  //     supabase.auth.getSession().then(({ data: { session } }) => {
+  //       if (session) {
+  //         supabase
+  //           .from("User")
+  //           .select("*")
+  //           .eq("id", session.user.id)
+  //           .single()
+  //           .then(({ data, error }) => {
+  //             if (error || !data) {
+  //               // Profile doesn't exist: show the modal.
+  //               setShowProfileModal(true);
+  //             } else {
+  //               setShowProfileModal(false);
+  //             }
+  //           });
+  //       }
+  //     });
+  //   }, [])
+  // );
 
   useEffect(() => {
+    if (nearbyRestaurants.length === 0) return;
+  
     const fetchPopularMenuItems = async () => {
+      // Get IDs of restaurants that are nearby.
+      const restaurantIds = nearbyRestaurants.map(r => r.id);
+  
       const { data, error } = await supabase
         .from("MenuItem")
         .select(`
@@ -136,14 +141,16 @@ export function HomeScreen() {
             minimumOrder
           )
         `)
-        .order("createdAt", { ascending: true })
-        .limit(10);
-
+        // Filter menu items to only those belonging to nearby restaurants.
+        .in("restaurantId", restaurantIds)
+        .order("createdAt", { ascending: true });
+        
       if (error) {
         console.error("Error fetching popular menu items", error);
         return;
       }
-
+  
+      // Pick one dish per restaurant.
       const uniqueItems: MenuItem[] = [];
       const seenRestaurants = new Set<string>();
       data?.forEach((item: MenuItem) => {
@@ -152,12 +159,14 @@ export function HomeScreen() {
           seenRestaurants.add(item.restaurantId);
         }
       });
-
+  
+      // Set a maximum of 5 popular items.
       setPopularMenuItems(uniqueItems.slice(0, 5));
     };
-
+  
     fetchPopularMenuItems();
-  }, []);
+  }, [nearbyRestaurants]);
+  
 
  // Check the user's profile on screen focus.
  useFocusEffect(
@@ -184,20 +193,20 @@ export function HomeScreen() {
 useEffect(() => {
   if (!session) return;
 
+  // Subscribe to changes in the User table
   const userSubscription = supabase
-    .channel("user-changes")
+    .channel('user-changes')
     .on(
-      "postgres_changes",
+      'postgres_changes',
       {
-        event: "*",
-        schema: "public",
-        table: "User",
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'User',
         filter: `id=eq.${session.user.id}`,
       },
       (payload) => {
-        if (payload.new && payload.new.name) {
-          setUserName(payload.new.name);
-        }
+        // Update the userName state with the new name
+        setUserName(payload.new.name);
       }
     )
     .subscribe();
@@ -206,6 +215,7 @@ useEffect(() => {
     supabase.removeChannel(userSubscription);
   };
 }, [session]);
+
   // Fetch user profile and default address once.
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {

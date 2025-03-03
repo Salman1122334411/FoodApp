@@ -8,11 +8,15 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
+  Platform,
+  Modal,
+  Pressable,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
 import { supabase } from "../lib/supabase";
-import { Ionicons } from "@expo/vector-icons";
+import { Calendar, ChevronDown, MapPin, Phone, User } from "lucide-react-native";
 import cuid from 'cuid';
+import DateTimePicker from '@react-native-community/datetimepicker';
+
 interface ProfileSetupModalProps {
   onProfileSetupSuccess: () => void;
 }
@@ -29,6 +33,8 @@ interface ValidationErrors {
   addressPhoneNumber?: string;
 }
 
+// ... (imports remain unchanged)
+
 const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) => {
   // Profile fields
   const [loading, setLoading] = useState(false);
@@ -37,15 +43,8 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
   const [phoneNumber, setPhoneNumber] = useState("");
 
   // Date of Birth fields
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: currentYear - 1900 + 1 }, (_, i) =>
-    (1900 + i).toString()
-  );
-  const months = Array.from({ length: 12 }, (_, i) => (i + 1).toString());
-  const days = Array.from({ length: 31 }, (_, i) => (i + 1).toString());
-  const [selectedDay, setSelectedDay] = useState("1");
-  const [selectedMonth, setSelectedMonth] = useState("1");
-  const [selectedYear, setSelectedYear] = useState(currentYear.toString());
+  const [dob, setDob] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // Address fields (for default address)
   const [addressLabel, setAddressLabel] = useState("");
@@ -56,6 +55,7 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
   const [addressPhoneNumber, setAddressPhoneNumber] = useState("");
 
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
+  const [activeSection, setActiveSection] = useState<'profile' | 'address'>('profile');
 
   useEffect(() => {
     fetchUserEmail();
@@ -70,26 +70,47 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
     }
   };
 
-  // Validate all fields. Returns true if valid; otherwise, sets errors.
-  const validateFields = (): boolean => {
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    const currentDate = selectedDate || dob;
+    setShowDatePicker(Platform.OS === 'ios');
+    setDob(currentDate);
+  };
+
+  const showDatepicker = () => {
+    setShowDatePicker(true);
+  };
+
+  // Format date for display
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  // New: Separate profile validation
+  const validateProfileSection = (): ValidationErrors => {
     const errors: ValidationErrors = {};
-    // Profile validations
     if (!name.trim()) {
       errors.name = "Name is required.";
     }
     if (!phoneNumber.trim()) {
       errors.phoneNumber = "Phone number is required.";
+    } else if (!/^\d{10,11}$/.test(phoneNumber.trim())) {
+      errors.phoneNumber = "Phone number must be 10-11 digits.";
     }
-    // Validate DOB by creating a date
-    const dobDate = new Date(
-      Number(selectedYear),
-      Number(selectedMonth) - 1,
-      Number(selectedDay)
-    );
-    if (isNaN(dobDate.getTime())) {
-      errors.dob = "Please select a valid date of birth.";
+    const today = new Date();
+    const age = today.getFullYear() - dob.getFullYear();
+    if (age < 13) {
+      errors.dob = "You must be at least 13 years old.";
     }
-    // Address validations
+    return errors;
+  };
+
+  // New: Separate address validation
+  const validateAddressSection = (): ValidationErrors => {
+    const errors: ValidationErrors = {};
     if (!addressLabel.trim()) {
       errors.addressLabel = "Address label is required.";
     }
@@ -111,19 +132,42 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
     }
     if (!addressPhoneNumber.trim()) {
       errors.addressPhoneNumber = "Address phone number is required.";
-    } else if (!/^\d{11}$/.test(addressPhoneNumber.trim())) {
-      errors.addressPhoneNumber =
-        "Address phone number must be exactly 11 digits.";
+    } else if (!/^\d{10,11}$/.test(addressPhoneNumber.trim())) {
+      errors.addressPhoneNumber = "Address phone number must be 10-11 digits.";
     }
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
+    return errors;
   };
 
+  // Updated handleSave function
   const handleSave = async () => {
-    if (!validateFields()) {
-      // Validation errors exist. Do not continue.
-      return;
+    if (activeSection === 'profile') {
+      // Validate only profile fields
+      const profileErrors = validateProfileSection();
+      if (Object.keys(profileErrors).length > 0) {
+        setValidationErrors(profileErrors);
+        return; // Do not proceed, stay on profile tab
+      } else {
+        // If profile is valid, switch to address tab
+        setValidationErrors({});
+        setActiveSection('address');
+        return;
+      }
+    } else if (activeSection === 'address') {
+      // Validate both sections
+      const profileErrors = validateProfileSection();
+      const addressErrors = validateAddressSection();
+      const combinedErrors = { ...profileErrors, ...addressErrors };
+      if (Object.keys(combinedErrors).length > 0) {
+        setValidationErrors(combinedErrors);
+        // If there are profile errors, switch back to profile tab
+        if (Object.keys(profileErrors).length > 0) {
+          setActiveSection('profile');
+        }
+        return;
+      }
+      // If validations pass, proceed to save the data
     }
+
     try {
       setLoading(true);
       const {
@@ -131,20 +175,13 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
       } = await supabase.auth.getUser();
       if (!user) throw new Error("No user found");
 
-      // Combine day, month, and year into a date.
-      const dobDate = new Date(
-        Number(selectedYear),
-        Number(selectedMonth) - 1,
-        Number(selectedDay)
-      );
-
       // Upsert the user profile.
       const { error: userError } = await supabase.from("User").upsert({
         id: user.id,
         email: email,
         name: name,
         phoneNumber: phoneNumber,
-        dob: dobDate.toISOString(),
+        dob: dob.toISOString(),
         updatedAt: new Date().toISOString(),
       });
       if (userError) throw userError;
@@ -176,225 +213,429 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Profile & Address Setup</Text>
-
-      {/* Profile Section */}
-      <Text style={styles.sectionTitle}>Profile Information</Text>
-      <View style={styles.inputContainer}>
-        <Text style={styles.label}>Email</Text>
-        <TextInput style={styles.input} value={email} editable={false} />
-      </View>
-      <View style={styles.inputContainer}>
-        <Text style={styles.label}>Name</Text>
-        <TextInput
-          style={styles.input}
-          value={name}
-          onChangeText={setName}
-          placeholder="Enter your name"
-        />
-        {validationErrors.name && (
-          <Text style={styles.errorText}>{validationErrors.name}</Text>
-        )}
-      </View>
-      <View style={styles.inputContainer}>
-        <Text style={styles.label}>Phone Number</Text>
-        <TextInput
-          style={styles.input}
-          value={phoneNumber}
-          onChangeText={setPhoneNumber}
-          placeholder="Enter your phone number"
-          keyboardType="phone-pad"
-        />
-        {validationErrors.phoneNumber && (
-          <Text style={styles.errorText}>{validationErrors.phoneNumber}</Text>
-        )}
-      </View>
-      <View style={styles.inputContainer}>
-        <Text style={styles.label}>Date of Birth</Text>
-        <View style={styles.pickerContainer}>
-          <Picker
-            selectedValue={selectedDay}
-            style={styles.picker}
-            onValueChange={(itemValue) => setSelectedDay(itemValue)}
+    <View style={styles.modalContainer}>
+      <View style={styles.modalContent}>
+        <Text style={styles.title}>Complete Your Profile</Text>
+        
+        {/* Tab Navigation */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity 
+            style={[styles.tab, activeSection === 'profile' && styles.activeTab]}
+            onPress={() => setActiveSection('profile')}
           >
-            {days.map((day) => (
-              <Picker.Item key={day} label={day} value={day} />
-            ))}
-          </Picker>
-          <Picker
-            selectedValue={selectedMonth}
-            style={styles.picker}
-            onValueChange={(itemValue) => setSelectedMonth(itemValue)}
+            <User size={18} color={activeSection === 'profile' ? "#FF4B2B" : "#666"} />
+            <Text style={[styles.tabText, activeSection === 'profile' && styles.activeTabText]}>Profile</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.tab, activeSection === 'address' && styles.activeTab]}
+            onPress={() => setActiveSection('address')}
           >
-            {months.map((month) => (
-              <Picker.Item key={month} label={month} value={month} />
-            ))}
-          </Picker>
-          <Picker
-            selectedValue={selectedYear}
-            style={styles.picker}
-            onValueChange={(itemValue) => setSelectedYear(itemValue)}
-          >
-            {years.map((year) => (
-              <Picker.Item key={year} label={year} value={year} />
-            ))}
-          </Picker>
+            <MapPin size={18} color={activeSection === 'address' ? "#FF4B2B" : "#666"} />
+            <Text style={[styles.tabText, activeSection === 'address' && styles.activeTabText]}>Address</Text>
+          </TouchableOpacity>
         </View>
-        {validationErrors.dob && (
-          <Text style={styles.errorText}>{validationErrors.dob}</Text>
-        )}
-      </View>
 
-      {/* Address Section */}
-      <Text style={styles.sectionTitle}>Default Address</Text>
-      <View style={styles.inputContainer}>
-        <Text style={styles.label}>Label</Text>
-        <TextInput
-          style={styles.input}
-          value={addressLabel}
-          onChangeText={setAddressLabel}
-          placeholder="e.g., Home"
-        />
-        {validationErrors.addressLabel && (
-          <Text style={styles.errorText}>{validationErrors.addressLabel}</Text>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          {activeSection === 'profile' ? (
+            /* Profile Section */
+            <>
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Email</Text>
+                <View style={styles.inputWrapper}>
+                  <TextInput 
+                    style={styles.input} 
+                    value={email} 
+                    editable={false} 
+                  />
+                </View>
+              </View>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Full Name</Text>
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    style={styles.input}
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="Enter your full name"
+                  />
+                </View>
+                {validationErrors.name && (
+                  <Text style={styles.errorText}>{validationErrors.name}</Text>
+                )}
+              </View>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Phone Number</Text>
+                <View style={styles.inputWrapper}>
+                  <Phone size={18} color="#666" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.inputWithIcon}
+                    value={phoneNumber}
+                    onChangeText={setPhoneNumber}
+                    placeholder="Enter your phone number"
+                    keyboardType="phone-pad"
+                  />
+                </View>
+                {validationErrors.phoneNumber && (
+                  <Text style={styles.errorText}>{validationErrors.phoneNumber}</Text>
+                )}
+              </View>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Date of Birth</Text>
+                <TouchableOpacity 
+                  style={styles.datePickerButton} 
+                  onPress={showDatepicker}
+                >
+                  <Calendar size={18} color="#666" style={styles.inputIcon} />
+                  <Text style={styles.dateText}>{formatDate(dob)}</Text>
+                  <ChevronDown size={18} color="#666" />
+                </TouchableOpacity>
+                {validationErrors.dob && (
+                  <Text style={styles.errorText}>{validationErrors.dob}</Text>
+                )}
+              </View>
+              
+              {showDatePicker && (
+                <Modal
+                  transparent={true}
+                  visible={showDatePicker}
+                  animationType="fade"
+                >
+                  <Pressable 
+                    style={styles.datePickerModalOverlay}
+                    onPress={() => setShowDatePicker(false)}
+                  >
+                    <View style={styles.datePickerContainer}>
+                      <View style={styles.datePickerHeader}>
+                        <Text style={styles.datePickerTitle}>Select Date of Birth</Text>
+                        <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                          <Text style={styles.datePickerDoneBtn}>Done</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <DateTimePicker
+                        testID="dateTimePicker"
+                        value={dob}
+                        mode="date"
+                        display="spinner" 
+                        onChange={onDateChange}
+                        style={styles.datePicker}
+                        maximumDate={new Date()}
+                      />
+                    </View>
+                  </Pressable>
+                </Modal>
+              )}
+            </>
+          ) : (
+            /* Address Section */
+            <>
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Address Label</Text>
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    style={styles.input}
+                    value={addressLabel}
+                    onChangeText={setAddressLabel}
+                    placeholder="e.g., Home, Work"
+                  />
+                </View>
+                {validationErrors.addressLabel && (
+                  <Text style={styles.errorText}>{validationErrors.addressLabel}</Text>
+                )}
+              </View>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Street Address</Text>
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    style={styles.input}
+                    value={streetAddress}
+                    onChangeText={setStreetAddress}
+                    placeholder="Enter street address"
+                  />
+                </View>
+                {validationErrors.streetAddress && (
+                  <Text style={styles.errorText}>{validationErrors.streetAddress}</Text>
+                )}
+              </View>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>City</Text>
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    style={styles.input}
+                    value={city}
+                    onChangeText={setCity}
+                    placeholder="Enter city"
+                  />
+                </View>
+                {validationErrors.city && (
+                  <Text style={styles.errorText}>{validationErrors.city}</Text>
+                )}
+              </View>
+              
+              <View style={styles.rowContainer}>
+                <View style={[styles.inputContainer, styles.halfWidth, { marginRight: 10 }]}>
+                  <Text style={styles.label}>State</Text>
+                  <View style={styles.inputWrapper}>
+                    <TextInput
+                      style={styles.input}
+                      value={stateField}
+                      onChangeText={setStateField}
+                      placeholder="Enter state"
+                    />
+                  </View>
+                  {validationErrors.state && (
+                    <Text style={styles.errorText}>{validationErrors.state}</Text>
+                  )}
+                </View>
+                
+                <View style={[styles.inputContainer, styles.halfWidth]}>
+                  <Text style={styles.label}>Zip Code</Text>
+                  <View style={styles.inputWrapper}>
+                    <TextInput
+                      style={styles.input}
+                      value={zipCode}
+                      onChangeText={setZipCode}
+                      placeholder="Enter zip code"
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  {validationErrors.zipCode && (
+                    <Text style={styles.errorText}>{validationErrors.zipCode}</Text>
+                  )}
+                </View>
+              </View>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Address Phone Number</Text>
+                <View style={styles.inputWrapper}>
+                  <Phone size={18} color="#666" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.inputWithIcon}
+                    value={addressPhoneNumber}
+                    onChangeText={setAddressPhoneNumber}
+                    placeholder="Enter phone number"
+                    keyboardType="phone-pad"
+                  />
+                </View>
+                {validationErrors.addressPhoneNumber && (
+                  <Text style={styles.errorText}>
+                    {validationErrors.addressPhoneNumber}
+                  </Text>
+                )}
+              </View>
+            </>
+          )}
+        </ScrollView>
+        
+        <TouchableOpacity 
+          style={styles.saveButton} 
+          onPress={handleSave}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.saveButtonText}>
+              {activeSection === 'profile' ? 'Continue to Address' : 'Complete Setup'}
+            </Text>
+          )}
+        </TouchableOpacity>
+        
+        {activeSection === 'profile' && (
+          <TouchableOpacity 
+            style={styles.skipButton} 
+            onPress={() => setActiveSection('address')}
+          >
+            <Text style={styles.skipButtonText}>Skip to Address</Text>
+          </TouchableOpacity>
         )}
       </View>
-      <View style={styles.inputContainer}>
-        <Text style={styles.label}>Street Address</Text>
-        <TextInput
-          style={styles.input}
-          value={streetAddress}
-          onChangeText={setStreetAddress}
-          placeholder="Enter street address"
-        />
-        {validationErrors.streetAddress && (
-          <Text style={styles.errorText}>{validationErrors.streetAddress}</Text>
-        )}
-      </View>
-      <View style={styles.inputContainer}>
-        <Text style={styles.label}>City</Text>
-        <TextInput
-          style={styles.input}
-          value={city}
-          onChangeText={setCity}
-          placeholder="Enter city"
-        />
-        {validationErrors.city && (
-          <Text style={styles.errorText}>{validationErrors.city}</Text>
-        )}
-      </View>
-      <View style={styles.inputContainer}>
-        <Text style={styles.label}>State</Text>
-        <TextInput
-          style={styles.input}
-          value={stateField}
-          onChangeText={setStateField}
-          placeholder="Enter state"
-        />
-        {validationErrors.state && (
-          <Text style={styles.errorText}>{validationErrors.state}</Text>
-        )}
-      </View>
-      <View style={styles.inputContainer}>
-        <Text style={styles.label}>Zip Code</Text>
-        <TextInput
-          style={styles.input}
-          value={zipCode}
-          onChangeText={setZipCode}
-          placeholder="Enter zip code"
-          keyboardType="numeric"
-        />
-        {validationErrors.zipCode && (
-          <Text style={styles.errorText}>{validationErrors.zipCode}</Text>
-        )}
-      </View>
-      <View style={styles.inputContainer}>
-        <Text style={styles.label}>Address Phone Number</Text>
-        <TextInput
-          style={styles.input}
-          value={addressPhoneNumber}
-          onChangeText={setAddressPhoneNumber}
-          placeholder="Enter phone number"
-          keyboardType="phone-pad"
-        />
-        {validationErrors.addressPhoneNumber && (
-          <Text style={styles.errorText}>
-            {validationErrors.addressPhoneNumber}
-          </Text>
-        )}
-      </View>
-
-      <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.saveButtonText}>Save</Text>
-        )}
-      </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
 };
 
+
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    padding: 20,
-    backgroundColor: "#fff",
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    width: "90%",
+    maxWidth: 500,
+    backgroundColor: "#fff",
+    borderRadius: 15,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    maxHeight: "90%",
+  },
+  scrollContainer: {
+    paddingBottom: 20,
   },
   title: {
     fontSize: 24,
     fontWeight: "bold",
     marginBottom: 20,
     textAlign: "center",
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    marginVertical: 10,
-  },
-  inputContainer: {
-    marginBottom: 15,
-  },
-  label: {
-    fontSize: 16,
-    marginBottom: 5,
     color: "#333",
   },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    padding: 10,
-    borderRadius: 5,
-    fontSize: 16,
-  },
-  pickerContainer: {
+  tabContainer: {
     flexDirection: "row",
+    marginBottom: 20,
+    borderRadius: 10,
+    backgroundColor: "#f5f5f5",
+    padding: 5,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  activeTab: {
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabText: {
+    marginLeft: 5,
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#666",
+  },
+  activeTabText: {
+    color: "#FF4B2B",
+    fontWeight: "600",
+  },
+  inputContainer: {
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 14,
+    marginBottom: 6,
+    color: "#333",
+    fontWeight: "500",
+  },
+  inputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
     borderColor: "#ddd",
-    borderRadius: 5,
+    borderRadius: 8,
+    backgroundColor: "#f9f9f9",
   },
-  picker: {
+  input: {
     flex: 1,
-    height: 50,
+    padding: 12,
+    fontSize: 16,
+    color: "#333",
+  },
+  inputIcon: {
+    marginLeft: 12,
+  },
+  inputWithIcon: {
+    flex: 1,
+    padding: 12,
+    fontSize: 16,
+    color: "#333",
+    paddingLeft: 8,
+  },
+  datePickerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: "#f9f9f9",
+  },
+  dateText: {
+    flex: 1,
+    fontSize: 16,
+    color: "#333",
+    marginLeft: 8,
+  },
+  datePickerModalOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  datePickerContainer: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 15,
+    borderTopRightRadius: 15,
+    padding: 20,
+  },
+  datePickerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  datePickerTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+  },
+  datePickerDoneBtn: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FF4B2B",
+  },
+  datePicker: {
+    width: "100%",
+  },
+  rowContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  halfWidth: {
+    flex: 1,
   },
   saveButton: {
     backgroundColor: "#FF4B2B",
     padding: 15,
-    borderRadius: 5,
+    borderRadius: 8,
     alignItems: "center",
-    marginTop: 20,
+    marginTop: 10,
   },
   saveButtonText: {
     color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  skipButton: {
+    padding: 15,
+    alignItems: "center",
+  },
+  skipButtonText: {
+    color: "#666",
+    fontSize: 14,
   },
   errorText: {
-    color: "red",
+    color: "#FF3B30",
     marginTop: 5,
-    fontSize: 14,
+    fontSize: 12,
+    fontWeight: "500",
   },
 });
 

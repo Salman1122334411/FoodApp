@@ -127,25 +127,27 @@ export function AddressScreen() {
       await fetchLocation(); // trigger fetching of location
       // Wait a short time for the store to update (e.g. 500ms)
       setTimeout(() => {
-        // Read the latest location from the store
-        const loc = useLocation.getState().currentLocation;
-        // Ensure loc is a valid formatted address
+        // Destructure currentLocation and coords from the useLocation store
+        const { currentLocation, coords } = useLocation.getState();
+        // Ensure currentLocation is valid
         if (
-          loc &&
-          !loc.includes('Error') &&
-          !loc.includes('denied') &&
-          loc !== 'Fetching current location...'
+          currentLocation &&
+          !currentLocation.includes('Error') &&
+          !currentLocation.includes('denied') &&
+          currentLocation !== 'Fetching current location...'
         ) {
           // Parse the formatted address string into parts
-          const parts = loc.split(',');
+          const parts = currentLocation.split(',');
           const street = parts[0] ? parts[0].trim() : '';
-          const city = parts[1] ? parts[1].trim() : ''; // Use second part as city (or default)
-          const state = parts[2] ? parts[2].trim() : ''; // Use third part as state (or default)
+          const city = parts[1] ? parts[1].trim() : '';
+          const state = parts[2] ? parts[2].trim() : '';
           setCurrentLocationAddress({
             ...currentLocationAddress,
             streetAddress: street,
             city: city,
             state: state,
+            latitude: coords?.latitude,   // Include latitude
+            longitude: coords?.longitude, // Include longitude
           });
           setSavingCurrentLocation(true);
         } else {
@@ -157,6 +159,7 @@ export function AddressScreen() {
       Alert.alert('Error', 'Failed to fetch current location');
     }
   };
+  
 
   const handleAddCurrentLocationAddress = async () => {
     if (!validateCurrentLocationAddress()) return;

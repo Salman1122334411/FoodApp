@@ -276,7 +276,6 @@ export const RestaurantListScreen = ({ navigation }: { navigation: any }) => {
       </View>
     </View>
   );
-
   if (error) {
     return (
       <View style={styles.errorContainer}>
@@ -296,43 +295,100 @@ export const RestaurantListScreen = ({ navigation }: { navigation: any }) => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <FlatList
-        data={restaurants}
-        renderItem={renderRestaurantItem}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.listContainer}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        ListHeaderComponent={
-          <>
-            <View style={styles.searchContainer}>
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search restaurants or menu items..."
-                placeholderTextColor="#999"
-                value={searchTerm}
-                onChangeText={setSearchTerm}
-                autoFocus={true}
-              />
-            </View>
-            {loading && !refreshing && (
-              <ActivityIndicator size="large" color="#FF4B2B" style={styles.fullLoading} />
-            )}
-          </>
-        }
-        keyboardShouldPersistTaps="handled"
-      />
+<SafeAreaView style={styles.container}>
+  <FlatList
+    data={restaurants}
+    renderItem={renderRestaurantItem}
+    keyExtractor={(item) => item.id.toString()}
+    contentContainerStyle={styles.listContainer}
+    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    ListHeaderComponent={
+      <>
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search restaurants or menu items..."
+            placeholderTextColor="#999"
+            value={searchTerm}
+            onChangeText={setSearchTerm}
+            autoFocus={true}
+          />
+        </View>
+        {loading && !refreshing && (
+          <ActivityIndicator size="large" color="#FF4B2B" style={styles.fullLoading} />
+        )}
+      </>
+    }
+    keyboardShouldPersistTaps="handled"
+  />
+
+{cartItems.length > 0 && (
+        <TouchableOpacity
+          style={styles.viewCartButton}
+          onPress={() => navigation.navigate('Cart')}
+        >
+          <View style={styles.cartInfo}>
+            <Ionicons name="cart" size={24} color="#fff" />
+            <Text style={styles.cartCount}>
+              {cartItems.reduce((sum, item) => sum + item.quantity, 0)} items
+            </Text>
+          </View>
+          <Text style={styles.cartTotal}>
+            ${cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0).toFixed(2)}
+          </Text>
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
+
   );
 };
+
+
 
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  cartTotal: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  cartCount: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  viewCartButton: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: '#FF4B2B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    cartInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  cartInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   searchContainer: {
     flexDirection: 'row',
