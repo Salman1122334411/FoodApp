@@ -10,34 +10,43 @@ import {
   Image,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
-import { GoogleLogin } from "../../components/GoogleLogin"; // Correct import path
-import * as Google from "expo-auth-session/providers/google"; // Import Google AuthSession
+import * as Google from "expo-auth-session/providers/google";
 
 export const LoginScreen = ({ navigation }: { navigation: any }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loadingEmail, setLoadingEmail] = useState(false);
+  const [loadingGoogle, setLoadingGoogle] = useState(false);
+
+  // Simple regex for email validation
+  const validateEmail = (email: string) => {
+    const re = /\S+@\S+\.\S+/;
+    return re.test(email);
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
+    if (!validateEmail(email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
 
     try {
-      setLoading(true);
+      setLoadingEmail(true);
       const { error, data } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) throw error;
-
       console.log('Logged in user:', data.user);
     } catch (error: any) {
       Alert.alert('Error', error.message);
     } finally {
-      setLoading(false);
+      setLoadingEmail(false);
     }
   };
 
@@ -53,22 +62,32 @@ export const LoginScreen = ({ navigation }: { navigation: any }) => {
       const { authentication } = response;
       if (authentication?.accessToken) {
         signInWithSupabase(authentication.accessToken);
+      } else {
+        setLoadingGoogle(false);
       }
+    } else if (response && response.type !== "success") {
+      // Reset loading state if login was cancelled or failed
+      setLoadingGoogle(false);
     }
   }, [response]);
 
   const signInWithSupabase = async (accessToken: string) => {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { accessToken },
-    });
-
-    if (error) {
-      console.error("Google login error:", error);
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { accessToken },
+      });
+      if (error) {
+        console.error("Google login error:", error);
+        Alert.alert("Login failed", error.message);
+      } else {
+        console.log("User:", data);
+        Alert.alert("Login successful", `Welcome ${data.user?.email}`);
+      }
+    } catch (error: any) {
       Alert.alert("Login failed", error.message);
-    } else {
-      console.log("User:", data);
-      Alert.alert("Login successful", `Welcome ${data.user?.email}`);
+    } finally {
+      setLoadingGoogle(false);
     }
   };
 
@@ -87,7 +106,7 @@ export const LoginScreen = ({ navigation }: { navigation: any }) => {
         onChangeText={setEmail}
         autoCapitalize="none"
         keyboardType="email-address"
-        editable={!loading}
+        editable={!(loadingEmail || loadingGoogle)}
       />
       <TextInput
         style={styles.input}
@@ -95,31 +114,37 @@ export const LoginScreen = ({ navigation }: { navigation: any }) => {
         value={password}
         onChangeText={setPassword}
         secureTextEntry
-        editable={!loading}
+        editable={!(loadingEmail || loadingGoogle)}
       />
       <TouchableOpacity 
-        style={[styles.button, loading && styles.buttonDisabled]} 
+        style={[styles.button, (loadingEmail || loadingGoogle) && styles.buttonDisabled]} 
         onPress={handleLogin}
-        disabled={loading}
+        disabled={loadingEmail || loadingGoogle}
       >
-        {loading ? (
+        {loadingEmail ? (
           <ActivityIndicator color="#fff" />
         ) : (
           <Text style={styles.buttonText}>Login</Text>
         )}
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => navigation.navigate('SignUp')} disabled={loading}>
+      <TouchableOpacity 
+        onPress={() => navigation.navigate('SignUp')} 
+        disabled={loadingEmail || loadingGoogle}
+      >
         <Text style={styles.linkText}>Don't have an account? Sign Up</Text>
       </TouchableOpacity>
 
       {/* Google Login Button */}
       <TouchableOpacity
-        style={[styles.googleButton, loading && styles.buttonDisabled]}
-        onPress={() => promptAsync()}
-        disabled={loading || !request}
+        style={[styles.googleButton, loadingGoogle && styles.buttonDisabled]}
+        onPress={() => {
+          setLoadingGoogle(true);
+          promptAsync();
+        }}
+        disabled={loadingGoogle || !request || loadingEmail}
       >
-        {loading ? (
+        {loadingGoogle ? (
           <ActivityIndicator color="#fff" />
         ) : (
           <>
@@ -181,7 +206,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   googleButton: {
-    backgroundColor: '#FF6B6B', // Google red color
+    backgroundColor: '#FF6B6B',
     padding: 15,
     borderRadius: 8,
     marginTop: 15,

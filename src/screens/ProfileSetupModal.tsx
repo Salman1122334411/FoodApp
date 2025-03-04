@@ -14,8 +14,9 @@ import {
 } from "react-native";
 import { supabase } from "../lib/supabase";
 import { Calendar, ChevronDown, MapPin, Phone, User } from "lucide-react-native";
-import cuid from 'cuid';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import cuid from "cuid";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { useLocation } from "../hooks/useLocation"; // Added location hook
 
 interface ProfileSetupModalProps {
   onProfileSetupSuccess: () => void;
@@ -33,8 +34,6 @@ interface ValidationErrors {
   addressPhoneNumber?: string;
 }
 
-// ... (imports remain unchanged)
-
 const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) => {
   // Profile fields
   const [loading, setLoading] = useState(false);
@@ -48,14 +47,25 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
 
   // Address fields (for default address)
   const [addressLabel, setAddressLabel] = useState("");
+  // The location details will be auto-fetched but can be edited manually if needed.
   const [streetAddress, setStreetAddress] = useState("");
   const [city, setCity] = useState("");
   const [stateField, setStateField] = useState("");
   const [zipCode, setZipCode] = useState("");
   const [addressPhoneNumber, setAddressPhoneNumber] = useState("");
+  // To store coordinates from useLocation
+  const [latitude, setLatitude] = useState(0);
+  const [longitude, setLongitude] = useState(0);
+
+  // Flag to toggle manual entry if auto-location fails/is not working.
+  const [manualMode, setManualMode] = useState(false);
+  const [loadingLocation, setLoadingLocation] = useState(false);
 
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
-  const [activeSection, setActiveSection] = useState<'profile' | 'address'>('profile');
+  const [activeSection, setActiveSection] = useState<"profile" | "address">("profile");
+
+  // useLocation hook for fetching current location
+  const { fetchLocation, currentLocation, coords } = useLocation();
 
   useEffect(() => {
     fetchUserEmail();
@@ -72,7 +82,7 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
 
   const onDateChange = (event: any, selectedDate?: Date) => {
     const currentDate = selectedDate || dob;
-    setShowDatePicker(Platform.OS === 'ios');
+    setShowDatePicker(Platform.OS === "ios");
     setDob(currentDate);
   };
 
@@ -82,14 +92,14 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
 
   // Format date for display
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
     });
   };
 
-  // New: Separate profile validation
+  // Validate profile section
   const validateProfileSection = (): ValidationErrors => {
     const errors: ValidationErrors = {};
     if (!name.trim()) {
@@ -102,13 +112,13 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
     }
     const today = new Date();
     const age = today.getFullYear() - dob.getFullYear();
-    if (age < 13) {
+    if (age < -1) {
       errors.dob = "You must be at least 13 years old.";
     }
     return errors;
   };
 
-  // New: Separate address validation
+  // Validate address section (both for auto-fetched and manual mode)
   const validateAddressSection = (): ValidationErrors => {
     const errors: ValidationErrors = {};
     if (!addressLabel.trim()) {
@@ -138,34 +148,64 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
     return errors;
   };
 
-  // Updated handleSave function
+  // When the address tab is active and auto mode is enabled, fetch current location.
+  useEffect(() => {
+    if (activeSection === "address" && !manualMode) {
+      setLoadingLocation(true);
+      fetchLocation()
+        .catch((error) => {
+          console.error("Location fetch error:", error);
+          Alert.alert("Error", "Failed to fetch current location");
+        })
+        .finally(() => {
+          setLoadingLocation(false);
+        });
+    }
+  }, [activeSection, manualMode, fetchLocation]);
+
+  // Update auto location fields when currentLocation and coords update.
+  useEffect(() => {
+    if (
+      activeSection === "address" &&
+      !manualMode &&
+      currentLocation &&
+      coords &&
+      !currentLocation.includes("Error") &&
+      currentLocation !== "Fetching current location..."
+    ) {
+      const parts = currentLocation.split(",");
+      setStreetAddress(parts[0] ? parts[0].trim() : "");
+      setCity(parts[1] ? parts[1].trim() : "");
+      setStateField(parts[2] ? parts[2].trim() : "");
+      setLatitude(coords.latitude);
+      setLongitude(coords.longitude);
+    }
+  }, [currentLocation, coords, activeSection, manualMode]);
+
   const handleSave = async () => {
-    if (activeSection === 'profile') {
+    if (activeSection === "profile") {
       // Validate only profile fields
       const profileErrors = validateProfileSection();
       if (Object.keys(profileErrors).length > 0) {
         setValidationErrors(profileErrors);
-        return; // Do not proceed, stay on profile tab
+        return; // Stay on profile tab if errors exist
       } else {
-        // If profile is valid, switch to address tab
         setValidationErrors({});
-        setActiveSection('address');
+        setActiveSection("address");
         return;
       }
-    } else if (activeSection === 'address') {
-      // Validate both sections
+    } else if (activeSection === "address") {
+      // Validate both profile and address fields
       const profileErrors = validateProfileSection();
       const addressErrors = validateAddressSection();
       const combinedErrors = { ...profileErrors, ...addressErrors };
       if (Object.keys(combinedErrors).length > 0) {
         setValidationErrors(combinedErrors);
-        // If there are profile errors, switch back to profile tab
         if (Object.keys(profileErrors).length > 0) {
-          setActiveSection('profile');
+          setActiveSection("profile");
         }
         return;
       }
-      // If validations pass, proceed to save the data
     }
 
     try {
@@ -187,6 +227,7 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
       if (userError) throw userError;
 
       // Insert the default address.
+      // When in manual mode, lat & long are stored as 0.
       const { error: addressError } = await supabase.from("Address").insert({
         id: cuid(),
         userId: user.id,
@@ -199,6 +240,8 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
         isDefault: true,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        latitude: manualMode ? 0 : latitude,
+        longitude: manualMode ? 0 : longitude,
       });
       if (addressError) throw addressError;
 
@@ -216,43 +259,40 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
     <View style={styles.modalContainer}>
       <View style={styles.modalContent}>
         <Text style={styles.title}>Complete Your Profile</Text>
-        
+
         {/* Tab Navigation */}
         <View style={styles.tabContainer}>
-          <TouchableOpacity 
-            style={[styles.tab, activeSection === 'profile' && styles.activeTab]}
-            onPress={() => setActiveSection('profile')}
+          <TouchableOpacity
+            style={[styles.tab, activeSection === "profile" && styles.activeTab]}
+            onPress={() => setActiveSection("profile")}
           >
-            <User size={18} color={activeSection === 'profile' ? "#FF4B2B" : "#666"} />
-            <Text style={[styles.tabText, activeSection === 'profile' && styles.activeTabText]}>Profile</Text>
+            <User size={18} color={activeSection === "profile" ? "#FF4B2B" : "#666"} />
+            <Text style={[styles.tabText, activeSection === "profile" && styles.activeTabText]}>
+              Profile
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.tab, activeSection === 'address' && styles.activeTab]}
-            onPress={() => setActiveSection('address')}
+          <TouchableOpacity
+            style={[styles.tab, activeSection === "address" && styles.activeTab]}
+            onPress={() => setActiveSection("address")}
           >
-            <MapPin size={18} color={activeSection === 'address' ? "#FF4B2B" : "#666"} />
-            <Text style={[styles.tabText, activeSection === 'address' && styles.activeTabText]}>Address</Text>
+            <MapPin size={18} color={activeSection === "address" ? "#FF4B2B" : "#666"} />
+            <Text style={[styles.tabText, activeSection === "address" && styles.activeTabText]}>
+              Address
+            </Text>
           </TouchableOpacity>
         </View>
 
-        <ScrollView 
-          contentContainerStyle={styles.scrollContainer}
-          showsVerticalScrollIndicator={false}
-        >
-          {activeSection === 'profile' ? (
-            /* Profile Section */
+        <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+          {activeSection === "profile" ? (
             <>
+              {/* Profile Section */}
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Email</Text>
                 <View style={styles.inputWrapper}>
-                  <TextInput 
-                    style={styles.input} 
-                    value={email} 
-                    editable={false} 
-                  />
+                  <TextInput style={styles.input} value={email} editable={false} />
                 </View>
               </View>
-              
+
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Full Name</Text>
                 <View style={styles.inputWrapper}>
@@ -263,11 +303,9 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
                     placeholder="Enter your full name"
                   />
                 </View>
-                {validationErrors.name && (
-                  <Text style={styles.errorText}>{validationErrors.name}</Text>
-                )}
+                {validationErrors.name && <Text style={styles.errorText}>{validationErrors.name}</Text>}
               </View>
-              
+
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Phone Number</Text>
                 <View style={styles.inputWrapper}>
@@ -284,32 +322,20 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
                   <Text style={styles.errorText}>{validationErrors.phoneNumber}</Text>
                 )}
               </View>
-              
+
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Date of Birth</Text>
-                <TouchableOpacity 
-                  style={styles.datePickerButton} 
-                  onPress={showDatepicker}
-                >
+                <TouchableOpacity style={styles.datePickerButton} onPress={showDatepicker}>
                   <Calendar size={18} color="#666" style={styles.inputIcon} />
                   <Text style={styles.dateText}>{formatDate(dob)}</Text>
                   <ChevronDown size={18} color="#666" />
                 </TouchableOpacity>
-                {validationErrors.dob && (
-                  <Text style={styles.errorText}>{validationErrors.dob}</Text>
-                )}
+                {validationErrors.dob && <Text style={styles.errorText}>{validationErrors.dob}</Text>}
               </View>
-              
+
               {showDatePicker && (
-                <Modal
-                  transparent={true}
-                  visible={showDatePicker}
-                  animationType="fade"
-                >
-                  <Pressable 
-                    style={styles.datePickerModalOverlay}
-                    onPress={() => setShowDatePicker(false)}
-                  >
+                <Modal transparent={true} visible={showDatePicker} animationType="fade">
+                  <Pressable style={styles.datePickerModalOverlay} onPress={() => setShowDatePicker(false)}>
                     <View style={styles.datePickerContainer}>
                       <View style={styles.datePickerHeader}>
                         <Text style={styles.datePickerTitle}>Select Date of Birth</Text>
@@ -321,7 +347,7 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
                         testID="dateTimePicker"
                         value={dob}
                         mode="date"
-                        display="spinner" 
+                        display="spinner"
                         onChange={onDateChange}
                         style={styles.datePicker}
                         maximumDate={new Date()}
@@ -332,8 +358,8 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
               )}
             </>
           ) : (
-            /* Address Section */
             <>
+              {/* Address Section */}
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Address Label</Text>
                 <View style={styles.inputWrapper}>
@@ -348,70 +374,21 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
                   <Text style={styles.errorText}>{validationErrors.addressLabel}</Text>
                 )}
               </View>
-              
+
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Street Address</Text>
+                <Text style={styles.label}>Zip Code</Text>
                 <View style={styles.inputWrapper}>
                   <TextInput
                     style={styles.input}
-                    value={streetAddress}
-                    onChangeText={setStreetAddress}
-                    placeholder="Enter street address"
+                    value={zipCode}
+                    onChangeText={setZipCode}
+                    placeholder="Enter zip code"
+                    keyboardType="numeric"
                   />
                 </View>
-                {validationErrors.streetAddress && (
-                  <Text style={styles.errorText}>{validationErrors.streetAddress}</Text>
-                )}
+                {validationErrors.zipCode && <Text style={styles.errorText}>{validationErrors.zipCode}</Text>}
               </View>
-              
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>City</Text>
-                <View style={styles.inputWrapper}>
-                  <TextInput
-                    style={styles.input}
-                    value={city}
-                    onChangeText={setCity}
-                    placeholder="Enter city"
-                  />
-                </View>
-                {validationErrors.city && (
-                  <Text style={styles.errorText}>{validationErrors.city}</Text>
-                )}
-              </View>
-              
-              <View style={styles.rowContainer}>
-                <View style={[styles.inputContainer, styles.halfWidth, { marginRight: 10 }]}>
-                  <Text style={styles.label}>State</Text>
-                  <View style={styles.inputWrapper}>
-                    <TextInput
-                      style={styles.input}
-                      value={stateField}
-                      onChangeText={setStateField}
-                      placeholder="Enter state"
-                    />
-                  </View>
-                  {validationErrors.state && (
-                    <Text style={styles.errorText}>{validationErrors.state}</Text>
-                  )}
-                </View>
-                
-                <View style={[styles.inputContainer, styles.halfWidth]}>
-                  <Text style={styles.label}>Zip Code</Text>
-                  <View style={styles.inputWrapper}>
-                    <TextInput
-                      style={styles.input}
-                      value={zipCode}
-                      onChangeText={setZipCode}
-                      placeholder="Enter zip code"
-                      keyboardType="numeric"
-                    />
-                  </View>
-                  {validationErrors.zipCode && (
-                    <Text style={styles.errorText}>{validationErrors.zipCode}</Text>
-                  )}
-                </View>
-              </View>
-              
+
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Address Phone Number</Text>
                 <View style={styles.inputWrapper}>
@@ -425,34 +402,90 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
                   />
                 </View>
                 {validationErrors.addressPhoneNumber && (
-                  <Text style={styles.errorText}>
-                    {validationErrors.addressPhoneNumber}
-                  </Text>
+                  <Text style={styles.errorText}>{validationErrors.addressPhoneNumber}</Text>
                 )}
               </View>
+
+              {!manualMode ? (
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Current Location</Text>
+                  {loadingLocation ? (
+                    <ActivityIndicator color="#FF4B2B" />
+                  ) : (
+                    <Text style={styles.locationText}>
+                      {streetAddress
+                        ? `${streetAddress}, ${city}, ${stateField}`
+                        : "Unable to fetch location"}
+                    </Text>
+                  )}
+                </View>
+              ) : (
+                <>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Street Address</Text>
+                    <View style={styles.inputWrapper}>
+                      <TextInput
+                        style={styles.input}
+                        value={streetAddress}
+                        onChangeText={setStreetAddress}
+                        placeholder="Enter street address"
+                      />
+                    </View>
+                    {validationErrors.streetAddress && (
+                      <Text style={styles.errorText}>{validationErrors.streetAddress}</Text>
+                    )}
+                  </View>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>City</Text>
+                    <View style={styles.inputWrapper}>
+                      <TextInput
+                        style={styles.input}
+                        value={city}
+                        onChangeText={setCity}
+                        placeholder="Enter city"
+                      />
+                    </View>
+                    {validationErrors.city && <Text style={styles.errorText}>{validationErrors.city}</Text>}
+                  </View>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>State</Text>
+                    <View style={styles.inputWrapper}>
+                      <TextInput
+                        style={styles.input}
+                        value={stateField}
+                        onChangeText={setStateField}
+                        placeholder="Enter state"
+                      />
+                    </View>
+                    {validationErrors.state && <Text style={styles.errorText}>{validationErrors.state}</Text>}
+                  </View>
+                </>
+              )}
+
+              <TouchableOpacity
+                onPress={() => setManualMode(!manualMode)}
+                style={styles.manualToggleButton}
+              >
+                <Text style={styles.manualToggleButtonText}>
+                  {manualMode ? "Use current location" : "Can't fetch location? Enter manually"}
+                </Text>
+              </TouchableOpacity>
             </>
           )}
         </ScrollView>
-        
-        <TouchableOpacity 
-          style={styles.saveButton} 
-          onPress={handleSave}
-          disabled={loading}
-        >
+
+        <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={loading}>
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.saveButtonText}>
-              {activeSection === 'profile' ? 'Continue to Address' : 'Complete Setup'}
+              {activeSection === "profile" ? "Continue to Address" : "Complete Setup"}
             </Text>
           )}
         </TouchableOpacity>
-        
-        {activeSection === 'profile' && (
-          <TouchableOpacity 
-            style={styles.skipButton} 
-            onPress={() => setActiveSection('address')}
-          >
+
+        {activeSection === "profile" && (
+          <TouchableOpacity style={styles.skipButton} onPress={() => setActiveSection("address")}>
             <Text style={styles.skipButtonText}>Skip to Address</Text>
           </TouchableOpacity>
         )}
@@ -460,7 +493,6 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
     </View>
   );
 };
-
 
 const styles = StyleSheet.create({
   modalContainer: {
@@ -636,6 +668,19 @@ const styles = StyleSheet.create({
     marginTop: 5,
     fontSize: 12,
     fontWeight: "500",
+  },
+  manualToggleButton: {
+    marginTop: 10,
+    alignItems: "center",
+  },
+  manualToggleButtonText: {
+    color: "#FF4B2B",
+    textDecorationLine: "underline",
+  },
+  locationText: {
+    fontSize: 14,
+    color: "#333",
+    marginTop: 5,
   },
 });
 

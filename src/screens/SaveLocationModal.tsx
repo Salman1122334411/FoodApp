@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useLocation } from '../hooks/useLocation'; // Custom hook for location
 import { useAddress } from '../hooks/useAddress';   // Custom hook for address management
-
+import { supabase } from "../lib/supabase"; 
 interface SaveLocationModalProps {
   visible: boolean;
   onClose: () => void;
@@ -123,23 +123,47 @@ export default function SaveLocationModal({
   // Handler for saving the address, now including latitude and longitude.
   const handleSave = async () => {
     if (!validate()) return;
-
+  
     const newAddress = {
       ...address,
       isDefault: defaultAddress,
     };
-
+  
     try {
+      if (defaultAddress) {
+        // Get the current user's session and id
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session) {
+          Alert.alert("Error", "User is not logged in.");
+          return;
+        }
+        const currentUserId = session.user.id;
+  
+        // Update all addresses for the user to set isDefault to false
+        const { error: updateError } = await supabase
+          .from("Address")
+          .update({ isDefault: false })
+          .eq("userId", currentUserId);
+        
+        if (updateError) {
+          console.error("Error updating previous default addresses:", updateError);
+          Alert.alert("Error", "Failed to update previous default addresses");
+          return;
+        }
+      }
+  
       await addAddress(newAddress);
       onAddressAdded && onAddressAdded();
-      Alert.alert('Success', 'Current location saved successfully');
+      Alert.alert("Success", "Current location saved successfully");
       onClose();
     } catch (error) {
-      console.error('Error saving address:', error);
-      Alert.alert('Error', 'Failed to save address');
+      console.error("Error saving address:", error);
+      Alert.alert("Error", "Failed to save address");
     }
   };
-
+  
   return (
     <Modal
       animationType="slide"

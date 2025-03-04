@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  RefreshControl ,
   Dimensions,Modal
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -71,6 +72,7 @@ export function HomeScreen() {
   const [session, setSession] = useState<Session | null>(null);
   const [popularMenuItems, setPopularMenuItems] = useState<MenuItem[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [defaultAddressCoords, setDefaultAddressCoords] = useState<{
     latitude: number;
     longitude: number;
@@ -318,7 +320,13 @@ useEffect(() => {
       supabase.removeChannel(restaurantSubscription);
     };
   }, [fetchRestaurants]);
-
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    // Re-fetch your data; for example, refresh the restaurants list:
+    await fetchRestaurants();
+    // Optionally, add any additional refresh logic here.
+    setRefreshing(false);
+  }, [fetchRestaurants]);
   // Filter restaurants based on effective coordinates (either current location or default address).
   useEffect(() => {
     const effectiveCoords = coords || defaultAddressCoords;
@@ -346,9 +354,20 @@ useEffect(() => {
   return (
     <SafeAreaView style={styles.container}>
        <Modal visible={showProfileModal} animationType="slide">
-        <ProfileSetupModal onProfileSetupSuccess={() => setShowProfileModal(false)} />
-      </Modal>
-      <ScrollView showsVerticalScrollIndicator={false}>
+  <ProfileSetupModal
+    onProfileSetupSuccess={() => {
+      setShowProfileModal(false);
+      if (session) {
+        fetchUserProfile(session.user.id);
+      }
+    }}
+  />
+</Modal>
+      <ScrollView 
+      refreshControl={
+    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+  }
+      showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
           <View>

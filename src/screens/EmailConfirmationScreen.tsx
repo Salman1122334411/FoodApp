@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native"
 import { Mail } from "lucide-react-native"
 
 export const EmailConfirmationScreen = ({ navigation, route }: { navigation: any; route: any }) => {
- // const { email } = route.params
+  const { email } = route.params
 
   const goToLogin = () => {
     navigation.navigate("Login")
@@ -14,7 +14,7 @@ let e="sss";
         <Mail color="#0066cc" size={48} style={styles.icon} />
         <Text style={styles.title}>Check your email</Text>
         <Text style={styles.infoText}>We've sent a confirmation email to:</Text>
-        <Text style={styles.emailText}>{e}</Text>
+        <Text style={styles.emailText}>{email}</Text>
         <Text style={styles.instructionText}>
           Click the link in the email to confirm your account. If you don't see it, check your spam folder.
         </Text>
