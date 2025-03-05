@@ -71,7 +71,7 @@ export const RestaurantListScreen = ({ navigation }: { navigation: any }) => {
       .select('latitude, longitude')
       .eq('userId', userId)
       .eq('isDefault', true)
-      .single();
+      .maybeSingle();
     if (error) {
       console.error('Error fetching default address:', error.message);
       return;

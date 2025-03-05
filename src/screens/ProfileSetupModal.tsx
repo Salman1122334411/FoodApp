@@ -240,8 +240,8 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
         isDefault: true,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        latitude: manualMode ? 0 : latitude,
-        longitude: manualMode ? 0 : longitude,
+        latitude: manualMode ? 1 : latitude,
+        longitude: manualMode ? 1 : longitude,
       });
       if (addressError) throw addressError;
 
@@ -256,6 +256,8 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
   };
 
   return (
+
+    
     <View style={styles.modalContainer}>
       <View style={styles.modalContent}>
         <Text style={styles.title}>Complete Your Profile</Text>

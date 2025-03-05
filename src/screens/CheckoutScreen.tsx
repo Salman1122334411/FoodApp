@@ -100,8 +100,7 @@ export function CheckoutScreen() {
             updatedAt: currentTimestamp,
           }])
           .select('id')
-          .single();
-          
+          .maybeSingle();          
         if (orderError) throw orderError;
         
         // Prepare order items for insertion
@@ -145,10 +144,6 @@ export function CheckoutScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Checkout</Text>
-      </View>
-      
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Delivery Address Section */}
         <View style={styles.card}>
@@ -366,7 +361,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 2,
   },
   card: {
     backgroundColor: '#fff',

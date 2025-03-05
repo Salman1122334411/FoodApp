@@ -49,7 +49,7 @@ export function ProfileScreen() {
         .from('User')
         .select('*')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
       if (profileError) throw profileError;
       setProfile(profileData);

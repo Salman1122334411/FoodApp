@@ -137,8 +137,7 @@ export const getRestaurantById = async (
     `
     )
     .eq("id", id)
-    .single();
-
+    .maybeSingle();
   if (error) throw error;
   return data;
 };

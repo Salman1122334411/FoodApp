@@ -76,7 +76,7 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
       .select("latitude, longitude")
       .eq("userId", userId)
       .eq("isDefault", true)
-      .single();
+      .maybeSingle();
     if (error) {
       console.error("Error fetching default address:", error.message);
       return;
@@ -320,44 +320,51 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Popular Cuisines</Text>
-              {cuisineTypes.map((cuisine) => (
-                <View key={cuisine}>
-                  <TouchableOpacity
-                    style={styles.cuisineItem}
-                    onPress={() => handleCuisinePress(cuisine)}
-                  >
-                    <Text style={styles.cuisineName}>{cuisine}</Text>
-                    <Ionicons
-                      name={selectedCuisine === cuisine ? "chevron-up" : "chevron-down"}
-                      size={24}
-                      color="#6B7280"
-                    />
-                  </TouchableOpacity>
-                  {selectedCuisine === cuisine && (
-                    <View style={styles.cuisineDropdown}>
-                      {cuisineLoading ? (
-                        <ActivityIndicator
-                          size="small"
-                          color="#FF6B2B"
-                          style={styles.loader}
-                        />
-                      ) : (
-                        cuisineRestaurants.map((restaurant) => (
-                          <RestaurantCard
-                            key={restaurant.id}
-                            restaurant={restaurant}
-                            onPress={() =>
-                              navigation.navigate("RestaurantDetails", { restaurant })
-                            }
-                          />
-                        ))
-                      )}
-                    </View>
-                  )}
-                </View>
-              ))}
-            </View>
+  <Text style={styles.sectionTitle}>Popular Cuisines</Text>
+  {cuisineTypes.length === 0 ? (
+    <Text style={styles.noCuisinesText}>No cuisines available in your area</Text>
+  ) : (
+    cuisineTypes.map((cuisine) => (
+      <View key={cuisine}>
+        <TouchableOpacity
+          style={styles.cuisineItem}
+          onPress={() => handleCuisinePress(cuisine)}
+        >
+          <Text style={styles.cuisineName}>{cuisine}</Text>
+          <Ionicons
+            name={selectedCuisine === cuisine ? "chevron-up" : "chevron-down"}
+            size={24}
+            color="#6B7280"
+          />
+        </TouchableOpacity>
+        {selectedCuisine === cuisine && (
+          <View style={styles.cuisineDropdown}>
+            {cuisineLoading ? (
+              <ActivityIndicator
+                size="small"
+                color="#FF6B2B"
+                style={styles.loader}
+              />
+            ) : (
+              cuisineRestaurants.map((restaurant) => (
+                <RestaurantCard
+                  key={restaurant.id}
+                  restaurant={restaurant}
+                  onPress={() =>
+                    navigation.navigate("RestaurantDetails", { restaurant })
+                  }
+                />
+              ))
+            )}
+          </View>
+        )}
+      </View>
+    ))
+  )}
+</View>
+
+
+
           </>
         )}
       </Animated.ScrollView>
@@ -589,6 +596,12 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginTop: 20,
+  },
+  noCuisinesText: {
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+    marginTop: 10,
   },
 })
 

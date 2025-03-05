@@ -46,7 +46,7 @@ export function EditProfileScreen() {
         .from('User')
         .select('*')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
 

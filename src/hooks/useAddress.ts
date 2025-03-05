@@ -73,8 +73,7 @@ export const useAddress = create<AddressState>((set) => ({
           createdAt: currentTimestamp,
         }])
         .select()
-        .single();
-
+        .maybeSingle();
       if (error) throw error;
 
       set((state) => ({ addresses: [...state.addresses, data] }));

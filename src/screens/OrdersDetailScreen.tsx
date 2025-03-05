@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Linking,
   Alert,
+  ActivityIndicator
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { CircularProgress } from "../../components/CircularProgress";
@@ -179,7 +180,7 @@ export function OrderDetailsScreen({
           )
         `)
         .eq("id", order.id)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error("Error fetching order:", error);
@@ -225,7 +226,7 @@ export function OrderDetailsScreen({
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <Text>Loading...</Text>
+      <ActivityIndicator size="large" color="#FF4B2B" />
       </View>
     );
   }

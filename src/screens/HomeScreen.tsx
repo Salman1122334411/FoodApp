@@ -15,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../lib/supabase";
 import type { Session } from "@supabase/supabase-js";
 import { useNavigation,useFocusEffect  } from "@react-navigation/native";
+import { HomeScreenSkeleton } from "../../components/skeleton";
 // Import the custom location hook
 import { useLocation } from "../hooks/useLocation";
 import SaveLocationModal from "./SaveLocationModal"; // Adjust the path as needed
@@ -247,7 +248,7 @@ useEffect(() => {
       .from("User")
       .select("name")
       .eq("id", userId)
-      .single();
+      .maybeSingle();
 
     if (error) console.error("Error fetching user:", error.message);
     else setUserName(data?.name || "User");
@@ -259,7 +260,7 @@ useEffect(() => {
       .select("latitude, longitude")
       .eq("userId", userId)
       .eq("isDefault", true)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error("Error fetching default address:", error.message);
@@ -344,13 +345,19 @@ useEffect(() => {
     }
   }, [coords, defaultAddressCoords, restaurants]);
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FF6B6B" />
-      </View>
-    );
-  }
+  // if (loading) {
+  //   return (
+  //     <View style={styles.loadingContainer}>
+  //       <ActivityIndicator size="large" color="#FF6B6B" />
+  //     </View>
+  //   );
+  // }
+
+  // In your HomeScreen component
+if (loading) {
+  return <HomeScreenSkeleton />;
+}
+
   return (
     <SafeAreaView style={styles.container}>
        <Modal visible={showProfileModal} animationType="slide">

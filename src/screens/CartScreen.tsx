@@ -8,6 +8,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Image ,
 } from "react-native";
 import { useCart } from "../hooks/useCart";
 import { supabase } from "../lib/supabase";
@@ -35,6 +36,8 @@ export function CartScreen({ navigation }: { navigation: any }) {
   const [newAddress, setNewAddress] = useState<Partial<Address>>({});
   const [useNewAddress, setUseNewAddress] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [addressesLoading, setAddressesLoading] = useState(true); // New state for addresses loading
+
   const [validationErrors, setValidationErrors] = useState<{
     streetAddress?: string;
     city?: string;
@@ -85,6 +88,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
   };
 
   const fetchAddresses = async () => {
+    setAddressesLoading(true); // Set loading state to true before fetching
     try {
       const {
         data: { user },
@@ -107,6 +111,8 @@ export function CartScreen({ navigation }: { navigation: any }) {
     } catch (error) {
       console.error("Error fetching addresses:", error);
       Alert.alert("Error", "Failed to load addresses");
+    } finally {
+      setAddressesLoading(false); // Set loading state to false after fetching
     }
   };
 
@@ -179,8 +185,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
             },
           ])
           .select()
-          .single();
-
+          .maybeSingle();
         if (addressError) throw addressError;
         deliveryAddress = addressData;
       }
@@ -195,8 +200,7 @@ export function CartScreen({ navigation }: { navigation: any }) {
         .from("Restaurant")
         .select("id, latitude, longitude")
         .eq("id", restaurantId)
-        .single();
-
+        .maybeSingle();
       if (restaurantError || !restaurantData) {
         throw new Error("Failed to fetch restaurant data");
       }
@@ -250,6 +254,20 @@ export function CartScreen({ navigation }: { navigation: any }) {
     );
   }
 
+  if (cartItems.length === 0) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.emptyCartContainer}>
+          <Image
+            source={require("../../assets/hungryIcon.png")}
+            style={styles.emptyCartImage}
+          />
+          <Text style={styles.emptyCartText}>Your cart is empty!</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scrollView}>
@@ -295,9 +313,9 @@ export function CartScreen({ navigation }: { navigation: any }) {
         )}
 
         {/* Address Section */}
+        {/* Address Section */}
         <View style={styles.addressSection}>
           <Text style={styles.sectionTitle}>Delivery Address</Text>
-
           <TouchableOpacity
             style={styles.addressOption}
             onPress={() => {
@@ -307,43 +325,44 @@ export function CartScreen({ navigation }: { navigation: any }) {
             <Ionicons name="location-outline" size={24} color="#FF4B2B" />
             <Text style={styles.addressOptionText}>Manage Saved Addresses</Text>
           </TouchableOpacity>
-          {addresses.length === 0 && !useNewAddress && (
+          {!useNewAddress &&
+            (addressesLoading ? (
+              <ActivityIndicator size="small" color="#FF4B2B" />
+            ) : addresses.length === 0 ? (
               <Text style={styles.noAddressMessage}>
                 No saved addresses available.
               </Text>
-            )}
-          {addresses.length > 0 && !useNewAddress && (
-            <View style={styles.savedAddresses}>
-              {addresses.map((address) => (
-                <TouchableOpacity
-                  key={address.id}
-                  style={[
-                    styles.addressCard,
-                    selectedAddress?.id === address.id &&
-                      styles.selectedAddress,
-                  ]}
-                  onPress={() => {
-                    setSelectedAddress(address);
-                    setUseNewAddress(false);
-                  }}
-                >
-                  <Text style={styles.addressText}>
-                    {address.label}: {address.streetAddress}
-                  </Text>
-                  <Text style={styles.addressText}>
-                    {address.city}, {address.state} {address.zipCode}
-                  </Text>
-                  <Text style={styles.addressText}>
-                    Phone: {address.phoneNumber}
-                  </Text>
-                  {address.isDefault && (
-                    <Text style={styles.defaultBadge}>Default</Text>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
+            ) : (
+              <View style={styles.savedAddresses}>
+                {addresses.map((address) => (
+                  <TouchableOpacity
+                    key={address.id}
+                    style={[
+                      styles.addressCard,
+                      selectedAddress?.id === address.id &&
+                        styles.selectedAddress,
+                    ]}
+                    onPress={() => {
+                      setSelectedAddress(address);
+                      setUseNewAddress(false);
+                    }}
+                  >
+                    <Text style={styles.addressText}>
+                      {address.label}: {address.streetAddress}
+                    </Text>
+                    <Text style={styles.addressText}>
+                      {address.city}, {address.state} {address.zipCode}
+                    </Text>
+                    <Text style={styles.addressText}>
+                      Phone: {address.phoneNumber}
+                    </Text>
+                    {address.isDefault && (
+                      <Text style={styles.defaultBadge}>Default</Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ))}
         </View>
       </ScrollView>
 
@@ -361,11 +380,16 @@ export function CartScreen({ navigation }: { navigation: any }) {
                   "Order Restriction",
                   "You can only order items from one restaurant at a time. Please remove items from other restaurants."
                 );
+              } else if (!selectedAddress && !useNewAddress) {
+                Alert.alert(
+                  "No Address Selected",
+                  "Please select or add an address to proceed with your order."
+                );
               } else {
                 handleCheckout();
               }
             }}
-            disabled={loading || (!selectedAddress && !useNewAddress)}
+            disabled={loading} // Only disable when loading
           >
             <Text style={styles.checkoutButtonText}>
               {loading ? "Processing..." : "Place Order"}
@@ -420,9 +444,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   noAddressMessage: {
-    color: '#888',
+    color: "#888",
     fontSize: 16,
-    textAlign: 'center',
+    textAlign: "center",
     marginVertical: 10,
   },
   quantityContainer: {
@@ -555,5 +579,22 @@ const styles = StyleSheet.create({
     color: "red",
     fontSize: 12,
     marginBottom: 5,
+  },
+  emptyCartContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  emptyCartImage: {
+    width: 100,
+    height: 100,
+    marginBottom: 20,
+    // resizeMode: "contain" // optional
+  },
+  emptyCartText: {
+    fontSize: 16,
+    color: "#333",
+    textAlign: "center",
   },
 });

@@ -30,8 +30,7 @@ export default function App() {
       const { data: testData, error: testError } = await supabase
         .from('Restaurant')
         .select('count')
-        .single();
-      
+        .maybeSingle();      
       if (testError) {
         console.error('Supabase connection test failed:', testError.message);
         setError('Failed to connect to database: ' + testError.message);
