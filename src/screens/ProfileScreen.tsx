@@ -185,16 +185,18 @@ export function ProfileScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={() => navigation.navigate('Orders' as never)}
-        >
-          <Ionicons name="receipt-outline" size={24} color="#FF4B2B" />
-          <Text style={styles.actionButtonText}>Orders</Text>
-        </TouchableOpacity>
+              style={styles.actionButton}
+              onPress={() => navigation.navigate('Orders' as never)}
+            >
+              <View style={styles.actionIconContainer}>
+                <Ionicons name="receipt-outline" size={24} color="#FF4B2B" />
+              </View>
+              <Text style={styles.actionButtonText}>Orders</Text>
+            </TouchableOpacity>
 
         <TouchableOpacity 
           style={styles.actionButton}
-          onPress={() => navigation.navigate('ProfileSetup' as never)}
+          onPress={() => {}}
         >
           <Ionicons name="heart-outline" size={24} color="#FF4B2B" />
           <Text style={styles.actionButtonText}>Favorites</Text>

@@ -57,7 +57,7 @@ export function CheckoutScreen() {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
-
+  
       // Group items by restaurant (we assume only one restaurant is in the cart)
       const restaurantGroups = cartItems.reduce((acc, item) => {
         const key = item.restaurantId;
@@ -73,19 +73,19 @@ export function CheckoutScreen() {
         acc[key].total += item.price * item.quantity;
         return acc;
       }, {} as Record<string, any>);
-
+  
       // Create orders and order items for each restaurant group
       for (const restaurantId of Object.keys(restaurantGroups)) {
         const group = restaurantGroups[restaurantId];
-
+  
         // Generate a unique order ID using cuid
         const orderId = cuid();
         // Get current timestamp in ISO format
         const currentTimestamp = new Date().toISOString();
-
+  
         // Create the full delivery address string
         const deliveryAddressString = `${deliveryAddress.streetAddress}, ${deliveryAddress.city}, ${deliveryAddress.state}, ${deliveryAddress.zipCode}`;
-
+  
         // Insert the order record
         const { data: orderData, error: orderError } = await supabase
           .from('Order')
@@ -113,17 +113,23 @@ export function CheckoutScreen() {
           name: item.name,
           updatedAt: currentTimestamp,
         }));
-
+  
         // Insert order items
         const { error: itemsError } = await supabase
           .from('OrderItem')
           .insert(orderItems);
-
+  
         if (itemsError) throw itemsError;
       }
       
       clearCart(); // Clear the cart upon successful order placement
-      navigation.navigate('Orders');
+      
+      // Reset the navigation stack so that Orders screen is the new root
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainTabs' }],
+      });
+      
       Alert.alert('Success', 'Order placed successfully!');
     } catch (error) {
       console.error('Order placement error:', error);
@@ -132,6 +138,8 @@ export function CheckoutScreen() {
       setLoading(false);
     }
   };
+  
+  
 
   if (loading) {
     return (

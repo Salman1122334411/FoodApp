@@ -23,9 +23,7 @@ import { useCart } from "../hooks/useCart";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { useNavigation } from "@react-navigation/native";
-// Import the custom location hook
 import { useLocation } from "../hooks/useLocation";
-// Import the getDistance utility
 import { getDistance } from "../utils/geo";
 import { supabase } from "../lib/supabase";
 
@@ -39,6 +37,7 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
   const { addToCart } = useCart();
 
   const [cuisineTypes, setCuisineTypes] = useState<string[]>([]);
+  const [cuisineTypesLoading, setCuisineTypesLoading] = useState(false); // New loading state for cuisines
   const [selectedCuisine, setSelectedCuisine] = useState<string | null>(null);
   const [cuisineRestaurants, setCuisineRestaurants] = useState<any[]>([]);
   const [cuisineLoading, setCuisineLoading] = useState(false);
@@ -52,16 +51,13 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
     latitude: number;
     longitude: number;
   } | null>(null);
-  // Effective coordinates: use current location if available, otherwise default address.
   const effectiveCoords = coords || defaultAddressCoords;
   //---------------------------------------------
 
-  // Fetch current location on mount.
   useEffect(() => {
     fetchLocation();
   }, [fetchLocation]);
 
-  // Fetch the user's default address coordinates.
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
@@ -151,36 +147,36 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
   }, [searchQuery, effectiveCoords]);
 
   // Fetch popular cuisines only from nearby restaurants.
+  // Fetch popular cuisines only from nearby restaurants.
   useEffect(() => {
+    if (!effectiveCoords) return; // Wait for effectiveCoords to be available
     const fetchCuisineTypes = async () => {
+      setCuisineTypesLoading(true);
       try {
         const allRestaurants = await getRestaurants();
-        let filteredRestaurants = allRestaurants;
-        if (effectiveCoords) {
-          filteredRestaurants = allRestaurants.filter((r: any) => {
-            const distance = getDistance(
-              effectiveCoords.latitude,
-              effectiveCoords.longitude,
-              r.latitude,
-              r.longitude
-            );
-            return distance <= 10;
-          });
-        } else {
-          filteredRestaurants = [];
-        }
+        const filteredRestaurants = allRestaurants.filter((r: any) => {
+          const distance = getDistance(
+            effectiveCoords.latitude,
+            effectiveCoords.longitude,
+            r.latitude,
+            r.longitude
+          );
+          return distance <= 10;
+        });
         const cuisines = Array.from(
           new Set(filteredRestaurants.map((r: any) => r.cuisineType))
         );
         setCuisineTypes(cuisines);
       } catch (error) {
         console.error("Error fetching cuisines: ", error);
+      } finally {
+        setCuisineTypesLoading(false);
       }
     };
     fetchCuisineTypes();
   }, [effectiveCoords]);
 
-  // Fetch restaurants for the selected cuisine, then filter by location.
+  // Fetch restaurants for the selected cuisine.
   useEffect(() => {
     if (selectedCuisine && effectiveCoords) {
       setCuisineLoading(true);
@@ -288,7 +284,9 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
                       onPress={() => {
                         addToRecentSearches(item.label);
                         navigation.navigate("RestaurantDetails", {
-                          restaurant: item.Restaurant || { id: item.restaurantId },
+                          restaurant: item.Restaurant || {
+                            id: item.restaurantId,
+                          },
                           selectedMenuItem: item,
                         });
                       }}
@@ -320,51 +318,62 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
             </View>
 
             <View style={styles.section}>
-  <Text style={styles.sectionTitle}>Popular Cuisines</Text>
-  {cuisineTypes.length === 0 ? (
-    <Text style={styles.noCuisinesText}>No cuisines available in your area</Text>
-  ) : (
-    cuisineTypes.map((cuisine) => (
-      <View key={cuisine}>
-        <TouchableOpacity
-          style={styles.cuisineItem}
-          onPress={() => handleCuisinePress(cuisine)}
-        >
-          <Text style={styles.cuisineName}>{cuisine}</Text>
-          <Ionicons
-            name={selectedCuisine === cuisine ? "chevron-up" : "chevron-down"}
-            size={24}
-            color="#6B7280"
-          />
-        </TouchableOpacity>
-        {selectedCuisine === cuisine && (
-          <View style={styles.cuisineDropdown}>
-            {cuisineLoading ? (
-              <ActivityIndicator
-                size="small"
-                color="#FF6B2B"
-                style={styles.loader}
-              />
-            ) : (
-              cuisineRestaurants.map((restaurant) => (
-                <RestaurantCard
-                  key={restaurant.id}
-                  restaurant={restaurant}
-                  onPress={() =>
-                    navigation.navigate("RestaurantDetails", { restaurant })
-                  }
+              <Text style={styles.sectionTitle}>Popular Cuisines</Text>
+              {!effectiveCoords || cuisineTypesLoading ? (
+                <ActivityIndicator
+                  size="small"
+                  color="#FF6B2B"
+                  style={styles.loader}
                 />
-              ))
-            )}
-          </View>
-        )}
-      </View>
-    ))
-  )}
-</View>
-
-
-
+              ) : cuisineTypes.length === 0 ? (
+                <Text style={styles.noCuisinesText}>
+                  No cuisines available in your area
+                </Text>
+              ) : (
+                cuisineTypes.map((cuisine) => (
+                  <View key={cuisine}>
+                    <TouchableOpacity
+                      style={styles.cuisineItem}
+                      onPress={() => handleCuisinePress(cuisine)}
+                    >
+                      <Text style={styles.cuisineName}>{cuisine}</Text>
+                      <Ionicons
+                        name={
+                          selectedCuisine === cuisine
+                            ? "chevron-up"
+                            : "chevron-down"
+                        }
+                        size={24}
+                        color="#6B7280"
+                      />
+                    </TouchableOpacity>
+                    {selectedCuisine === cuisine && (
+                      <View style={styles.cuisineDropdown}>
+                        {cuisineLoading ? (
+                          <ActivityIndicator
+                            size="small"
+                            color="#FF6B2B"
+                            style={styles.loader}
+                          />
+                        ) : (
+                          cuisineRestaurants.map((restaurant) => (
+                            <RestaurantCard
+                              key={restaurant.id}
+                              restaurant={restaurant}
+                              onPress={() =>
+                                navigation.navigate("RestaurantDetails", {
+                                  restaurant,
+                                })
+                              }
+                            />
+                          ))
+                        )}
+                      </View>
+                    )}
+                  </View>
+                ))
+              )}
+            </View>
           </>
         )}
       </Animated.ScrollView>
@@ -381,12 +390,16 @@ const RestaurantCard = ({
 }) => (
   <TouchableOpacity style={styles.restaurantCard} onPress={onPress}>
     <Image
-      source={{ uri: restaurant.coverImage || "https://via.placeholder.com/150" }}
+      source={{
+        uri: restaurant.coverImage || "https://via.placeholder.com/150",
+      }}
       style={styles.restaurantImage}
     />
     <View style={styles.restaurantInfo}>
       <Text style={styles.restaurantName}>{restaurant.name || ""}</Text>
-      <Text style={styles.restaurantCuisine}>{restaurant.cuisineType || ""}</Text>
+      <Text style={styles.restaurantCuisine}>
+        {restaurant.cuisineType || ""}
+      </Text>
       <View style={styles.restaurantMeta}>
         <View style={styles.ratingContainer}>
           <Ionicons name="star" size={16} color="#FFD700" />
@@ -420,7 +433,6 @@ const MenuItemCard = ({
     </Text>
   </TouchableOpacity>
 );
-
 
 const styles = StyleSheet.create({
   container: {
@@ -603,6 +615,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 10,
   },
-})
+});
 
-export default SearchScreen
+export default SearchScreen;

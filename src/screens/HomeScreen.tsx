@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,21 +7,21 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  RefreshControl ,
-  Dimensions,Modal
+  RefreshControl,
+  Dimensions,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../lib/supabase";
 import type { Session } from "@supabase/supabase-js";
-import { useNavigation,useFocusEffect  } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { HomeScreenSkeleton } from "../../components/skeleton";
-// Import the custom location hook
 import { useLocation } from "../hooks/useLocation";
-import SaveLocationModal from "./SaveLocationModal"; // Adjust the path as needed
-// Import the getDistance utility from our new file.
+import SaveLocationModal from "./SaveLocationModal";
 import { getDistance } from "../utils/geo";
 import ProfileSetupModal from "./ProfileSetupModal";
+
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.7;
 
@@ -72,6 +72,7 @@ export function HomeScreen() {
   const [userName, setUserName] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [popularMenuItems, setPopularMenuItems] = useState<MenuItem[]>([]);
+  const [popularLoading, setPopularLoading] = useState<boolean>(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [defaultAddressCoords, setDefaultAddressCoords] = useState<{
@@ -79,147 +80,59 @@ export function HomeScreen() {
     longitude: number;
   } | null>(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  // Use the custom location hook.
   const { currentLocation, fetchLocation, coords } = useLocation();
   console.log("currentLocation:", currentLocation);
 
   useEffect(() => {
     fetchLocation();
-  }, [fetchLocation]);
+}, [fetchLocation]);
 
-
-   // Check the user's profile on screen focus.
-
-  //  useFocusEffect(
-  //   useCallback(() => {
-  //     supabase.auth.getSession().then(({ data: { session } }) => {
-  //       if (session) {
-  //         supabase
-  //           .from("User")
-  //           .select("*")
-  //           .eq("id", session.user.id)
-  //           .single()
-  //           .then(({ data, error }) => {
-  //             if (error || !data) {
-  //               // Profile doesn't exist: show the modal.
-  //               setShowProfileModal(true);
-  //             } else {
-  //               setShowProfileModal(false);
-  //             }
-  //           });
-  //       }
-  //     });
-  //   }, [])
-  // );
-
-  useEffect(() => {
-    if (nearbyRestaurants.length === 0) return;
-  
-    const fetchPopularMenuItems = async () => {
-      // Get IDs of restaurants that are nearby.
-      const restaurantIds = nearbyRestaurants.map(r => r.id);
-  
-      const { data, error } = await supabase
-        .from("MenuItem")
-        .select(`
-          id,
-          label,
-          price,
-          image,
-          restaurantId,
-          Restaurant:Restaurant (
-            id,
-            name,
-            chainName,
-            address,
-            latitude,
-            longitude,
-            cuisineType,
-            segment,
-            city,
-            area,
-            rating,
-            coverImage,
-            deliveryTime,
-            minimumOrder
-          )
-        `)
-        // Filter menu items to only those belonging to nearby restaurants.
-        .in("restaurantId", restaurantIds)
-        .order("createdAt", { ascending: true });
-        
-      if (error) {
-        console.error("Error fetching popular menu items", error);
-        return;
-      }
-  
-      // Pick one dish per restaurant.
-      const uniqueItems: MenuItem[] = [];
-      const seenRestaurants = new Set<string>();
-      data?.forEach((item: MenuItem) => {
-        if (!seenRestaurants.has(item.restaurantId)) {
-          uniqueItems.push(item);
-          seenRestaurants.add(item.restaurantId);
+  // Check the user's profile on screen focus.
+  useFocusEffect(
+    useCallback(() => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          supabase
+            .from("User")
+            .select("*")
+            .eq("id", session.user.id)
+            .single()
+            .then(({ data, error }) => {
+              if (error || !data) {
+                // Profile doesn't exist: show the modal.
+                setShowProfileModal(true);
+              } else {
+                setShowProfileModal(false);
+              }
+            });
         }
       });
-  
-      // Set a maximum of 5 popular items.
-      setPopularMenuItems(uniqueItems.slice(0, 5));
+    }, [])
+  );
+
+  useEffect(() => {
+    if (!session) return;
+    const userSubscription = supabase
+      .channel("user-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "User",
+          filter: `id=eq.${session.user.id}`,
+        },
+        (payload) => {
+          setUserName(payload.new.name);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(userSubscription);
     };
-  
-    fetchPopularMenuItems();
-  }, [nearbyRestaurants]);
-  
+  }, [session]);
 
- // Check the user's profile on screen focus.
- useFocusEffect(
-  useCallback(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        supabase
-          .from("User")
-          .select("*")
-          .eq("id", session.user.id)
-          .single()
-          .then(({ data, error }) => {
-            if (error || !data) {
-              // Profile doesn't exist: show the modal.
-              setShowProfileModal(true);
-            } else {
-              setShowProfileModal(false);
-            }
-          });
-      }
-    });
-  }, [])
-);
-useEffect(() => {
-  if (!session) return;
-
-  // Subscribe to changes in the User table
-  const userSubscription = supabase
-    .channel('user-changes')
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'User',
-        filter: `id=eq.${session.user.id}`,
-      },
-      (payload) => {
-        // Update the userName state with the new name
-        setUserName(payload.new.name);
-      }
-    )
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(userSubscription);
-  };
-}, [session]);
-
-  // Fetch user profile and default address once.
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -230,7 +143,6 @@ useEffect(() => {
     });
     fetchRestaurants();
   }, []);
-
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -274,7 +186,6 @@ useEffect(() => {
     }
   };
 
-  // Wrap fetchRestaurants in useCallback so it can be used in our realtime effect.
   const fetchRestaurants = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -303,7 +214,6 @@ useEffect(() => {
     setLoading(false);
   }, []);
 
-  // Subscribe to realtime changes in the Restaurant table.
   useEffect(() => {
     const restaurantSubscription = supabase
       .channel("restaurants")
@@ -321,14 +231,13 @@ useEffect(() => {
       supabase.removeChannel(restaurantSubscription);
     };
   }, [fetchRestaurants]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    // Re-fetch your data; for example, refresh the restaurants list:
     await fetchRestaurants();
-    // Optionally, add any additional refresh logic here.
     setRefreshing(false);
   }, [fetchRestaurants]);
-  // Filter restaurants based on effective coordinates (either current location or default address).
+
   useEffect(() => {
     const effectiveCoords = coords || defaultAddressCoords;
     if (effectiveCoords && restaurants.length > 0) {
@@ -345,36 +254,93 @@ useEffect(() => {
     }
   }, [coords, defaultAddressCoords, restaurants]);
 
-  // if (loading) {
-  //   return (
-  //     <View style={styles.loadingContainer}>
-  //       <ActivityIndicator size="large" color="#FF6B6B" />
-  //     </View>
-  //   );
-  // }
+  // Fetch popular menu items with a loader for popular dishes
+  useEffect(() => {
+    if (nearbyRestaurants.length === 0) {
+      setPopularMenuItems([]);
+      setPopularLoading(false);
+      return;
+    }
+  
+    const fetchPopularMenuItems = async () => {
+      setPopularLoading(true);
+      // Get IDs of restaurants that are nearby.
+      const restaurantIds = nearbyRestaurants.map((r) => r.id);
+  
+      const { data, error } = await supabase
+        .from("MenuItem")
+        .select(
+          `id,
+          label,
+          price,
+          image,
+          restaurantId,
+          Restaurant:Restaurant (
+            id,
+            name,
+            chainName,
+            address,
+            latitude,
+            longitude,
+            cuisineType,
+            segment,
+            city,
+            area,
+            rating,
+            coverImage,
+            deliveryTime,
+            minimumOrder
+          )`
+        )
+        .in("restaurantId", restaurantIds)
+        .order("createdAt", { ascending: true });
+  
+      if (error) {
+        console.error("Error fetching popular menu items", error);
+        setPopularLoading(false);
+        return;
+      }
+  
+      // Pick one dish per restaurant.
+      const uniqueItems: MenuItem[] = [];
+      const seenRestaurants = new Set<string>();
+      data?.forEach((item: MenuItem) => {
+        if (!seenRestaurants.has(item.restaurantId)) {
+          uniqueItems.push(item);
+          seenRestaurants.add(item.restaurantId);
+        }
+      });
+  
+      // Set a maximum of 5 popular items.
+      setPopularMenuItems(uniqueItems.slice(0, 5));
+      setPopularLoading(false);
+    };
+  
+    fetchPopularMenuItems();
+  }, [nearbyRestaurants]);
 
-  // In your HomeScreen component
-if (loading) {
-  return <HomeScreenSkeleton />;
-}
+  if (loading) {
+    return <HomeScreenSkeleton />;
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-       <Modal visible={showProfileModal} animationType="slide">
-  <ProfileSetupModal
-    onProfileSetupSuccess={() => {
-      setShowProfileModal(false);
-      if (session) {
-        fetchUserProfile(session.user.id);
-      }
-    }}
-  />
-</Modal>
-      <ScrollView 
-      refreshControl={
-    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-  }
-      showsVerticalScrollIndicator={false}>
+      <Modal visible={showProfileModal} animationType="slide">
+        <ProfileSetupModal
+          onProfileSetupSuccess={() => {
+            setShowProfileModal(false);
+            if (session) {
+              fetchUserProfile(session.user.id);
+            }
+          }}
+        />
+      </Modal>
+      <ScrollView
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+      >
         {/* Header */}
         <View style={styles.header}>
           <View>
@@ -389,9 +355,6 @@ if (loading) {
             </TouchableOpacity>
           </View>
         </View>
-
-        {/* Search Bar */}
-        {/* (You can add your search bar here) */}
 
         {/* Offers Carousel */}
         <ScrollView
@@ -419,43 +382,53 @@ if (loading) {
           ))}
         </ScrollView>
 
-        {/* Categories */}
-
         {/* Popular Dishes */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Popular Dishes</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.popularDishes}
-          >
-            {popularMenuItems.map((dish) => (
-              <TouchableOpacity
-                key={dish.id}
-                style={styles.dishCard}
-                onPress={() => {
-                  navigation.navigate("RestaurantDetails", {
-                    restaurant: dish.Restaurant,
-                    menuItem: dish,
-                  });
-                }}
-              >
-                <Image source={{ uri: dish.image }} style={styles.dishImage} />
-                <View style={styles.dishInfo}>
-                  <Text style={styles.dishName}>{dish.label}</Text>
-                  <Text style={styles.dishRestaurant}>
-                    {dish.Restaurant?.name}
-                  </Text>
-                  <Text style={styles.dishPrice}>
-                    ${dish.price.toFixed(2)}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          {popularLoading ? (
+            <ActivityIndicator
+              size="small"
+              color="#FF4B2B"
+              style={{ marginTop: 10 }}
+            />
+          ) : popularMenuItems.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.popularDishes}
+            >
+              {popularMenuItems.map((dish) => (
+                <TouchableOpacity
+                  key={dish.id}
+                  style={styles.dishCard}
+                  onPress={() => {
+                    navigation.navigate("RestaurantDetails", {
+                      restaurant: dish.Restaurant,
+                      menuItem: dish,
+                    });
+                  }}
+                >
+                  <Image source={{ uri: dish.image }} style={styles.dishImage} />
+                  <View style={styles.dishInfo}>
+                    <Text style={styles.dishName}>{dish.label}</Text>
+                    <Text style={styles.dishRestaurant}>
+                      {dish.Restaurant?.name}
+                    </Text>
+                    <Text style={styles.dishPrice}>
+                      ${dish.price.toFixed(2)}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <Text style={styles.noDataText}>
+              No popular dishes available
+            </Text>
+          )}
         </View>
 
-        {/* 4. Nearby Restaurants Section (replacing Featured Restaurants) */}
+        {/* Nearby Restaurants */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Nearby Restaurants</Text>
@@ -505,7 +478,11 @@ if (loading) {
                   </View>
                   <View style={styles.restaurantMeta}>
                     <View style={styles.metaItem}>
-                      <Ionicons name="bicycle-outline" size={16} color="#6B7280" />
+                      <Ionicons
+                        name="bicycle-outline"
+                        size={16}
+                        color="#6B7280"
+                      />
                       <Text style={styles.metaText}>Free Delivery</Text>
                     </View>
                     <View style={styles.metaItem}>
@@ -525,6 +502,15 @@ if (loading) {
           )}
         </View>
       </ScrollView>
+
+      {/* Floating Cart Button */}
+      <TouchableOpacity
+        style={styles.floatingCartButton}
+        onPress={() => navigation.navigate("Cart")}
+      >
+        <Ionicons name="cart" size={24} color="#fff" />
+      </TouchableOpacity>
+
       <SaveLocationModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
@@ -565,9 +551,41 @@ const styles = StyleSheet.create({
   deliveryAddress: {
     marginHorizontal: 8,
     fontSize: 14,
-   flexShrink: 1, // Allows the text to shrink if it's too long
+    flexShrink: 1, // Allows the text to shrink if it's too long
     // Alternatively, you can use flexWrap if you prefer multiline text:
-   //  flexWrap: "wrap",
+    // flexWrap: "wrap",
+  },
+  // Cart button in header
+  cartButton: {
+    backgroundColor: "#FF4B2B",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  // Floating cart button at bottom right
+  floatingCartButton: {
+    position: "absolute",
+    bottom: 20,
+    right: 20,
+    backgroundColor: "#FF4B2B",
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 999,
   },
   offersContainer: {
     padding: 16,
@@ -749,6 +767,11 @@ const styles = StyleSheet.create({
   restaurantMeta: {
     flexDirection: "row",
     marginTop: 8,
+  },
+  noDataText: {
+    textAlign: "center",
+    marginTop: 10,
+    color: "#6B7280",
   },
   metaItem: {
     flexDirection: "row",

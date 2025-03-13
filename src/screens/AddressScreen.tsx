@@ -45,7 +45,8 @@ export function AddressScreen() {
   const [currentLocationAddress, setCurrentLocationAddress] = useState<Partial<Address>>({});
 
   // Get current location from useLocation hook
-  const { location, fetchLocation } = useLocation();
+  // Removed 'location' because it's not part of the hook's returned type and was never used.
+  const { fetchLocation } = useLocation();
 
   useEffect(() => {
     fetchAddresses();
@@ -159,7 +160,6 @@ export function AddressScreen() {
       Alert.alert('Error', 'Failed to fetch current location');
     }
   };
-  
 
   const handleAddCurrentLocationAddress = async () => {
     if (!validateCurrentLocationAddress()) return;
@@ -218,7 +218,7 @@ export function AddressScreen() {
 
           <TextInput
             style={[styles.input, validationErrors.streetAddress && styles.inputError]}
-            value={newAddress.streetAddress}
+            value={newAddress.streetAddress || ""}
             onChangeText={(text) => setNewAddress({ ...newAddress, streetAddress: text })}
             placeholder="Street Address"
           />
@@ -226,7 +226,7 @@ export function AddressScreen() {
 
           <TextInput
             style={[styles.input, validationErrors.city && styles.inputError]}
-            value={newAddress.city}
+            value={newAddress.city || ""}
             onChangeText={(text) => setNewAddress({ ...newAddress, city: text })}
             placeholder="City"
           />
@@ -234,7 +234,7 @@ export function AddressScreen() {
 
           <TextInput
             style={[styles.input, validationErrors.state && styles.inputError]}
-            value={newAddress.state}
+            value={newAddress.state || ""}
             onChangeText={(text) => {
               setNewAddress({ ...newAddress, state: text.toUpperCase() });
               setValidationErrors({ ...validationErrors, state: undefined });
@@ -245,7 +245,7 @@ export function AddressScreen() {
 
           <TextInput
             style={[styles.input, validationErrors.zipCode && styles.inputError]}
-            value={newAddress.zipCode}
+            value={newAddress.zipCode || ""}
             onChangeText={(text) => setNewAddress({ ...newAddress, zipCode: text })}
             placeholder="Zip Code"
             keyboardType="numeric"
@@ -254,7 +254,7 @@ export function AddressScreen() {
 
           <TextInput
             style={[styles.input, validationErrors.phoneNumber && styles.inputError]}
-            value={newAddress.phoneNumber}
+            value={newAddress.phoneNumber || ""}
             onChangeText={(text) => {
               const cleanedText = text.replace(/\D/g, '');
               setNewAddress({ ...newAddress, phoneNumber: cleanedText });
@@ -282,7 +282,7 @@ export function AddressScreen() {
           </Text>
           <TextInput
             style={[styles.input, validationErrors.label && styles.inputError]}
-            value={currentLocationAddress.label}
+            value={currentLocationAddress.label || ""}
             onChangeText={(text) => setCurrentLocationAddress({ ...currentLocationAddress, label: text })}
             placeholder="Label (e.g., Home)"
           />
@@ -290,7 +290,7 @@ export function AddressScreen() {
 
           <TextInput
             style={[styles.input, validationErrors.zipCode && styles.inputError]}
-            value={currentLocationAddress.zipCode}
+            value={currentLocationAddress.zipCode || ""}
             onChangeText={(text) => setCurrentLocationAddress({ ...currentLocationAddress, zipCode: text })}
             placeholder="Zip Code"
             keyboardType="numeric"
@@ -299,7 +299,7 @@ export function AddressScreen() {
 
           <TextInput
             style={[styles.input, validationErrors.phoneNumber && styles.inputError]}
-            value={currentLocationAddress.phoneNumber}
+            value={currentLocationAddress.phoneNumber || ""}
             onChangeText={(text) => {
               const cleanedText = text.replace(/\D/g, '');
               setCurrentLocationAddress({ ...currentLocationAddress, phoneNumber: cleanedText });
@@ -349,6 +349,7 @@ export function AddressScreen() {
     </ScrollView>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {

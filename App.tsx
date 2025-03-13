@@ -24,7 +24,6 @@ import { AddressScreen } from './src/screens/AddressScreen';
 import { OrderDetailsScreen } from './src/screens/OrdersDetailScreen';
 import { CheckoutScreen } from './src/screens/CheckoutScreen';
 import { EmailConfirmationScreen } from './src/screens/EmailConfirmationScreen';
-import { ProfileSetupScreen } from './src/screens/ProfileSetupScreen';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
@@ -189,17 +188,6 @@ function NavigationContent() {
               headerBackTitle: 'Back',
             }}
           />
-
-           
-          <Stack.Screen
-            name="ProfileSetup"
-            component={ProfileSetupScreen}
-            options={{
-              title: 'Profile Setup',
-              headerBackTitle: 'Back',
-            }}
-          />
-
 
           
           <Stack.Screen
