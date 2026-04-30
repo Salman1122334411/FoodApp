@@ -1,18 +1,35 @@
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from './supabaseClient';
+export { supabase };
 import { getDistance } from "../utils/geo";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "";
+export type SelectionType = 'SINGLE' | 'MULTIPLE';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+export interface AddonOption {
+  id: string;
+  addonGroupId: string;
+  name: string;
+  priceAdjustment: number;
+  price_adjustment?: number; // Support snake_case from DB/API
+  isDefault: boolean;
+  sortOrder: number;
+  isActive: boolean;
+  image?: string;
+  linkedMenuItemId?: string;
+}
+
+export interface AddonGroup {
+  id: string;
+  restaurantId: string;
+  name: string;
+  displayName: string | null;
+  selectionType: SelectionType;
+  isRequired: boolean;
+  minSelections: number;
+  maxSelections: number | null;
+  sortOrder: number;
+  isActive: boolean;
+  options: AddonOption[];
+}
 
 export type MenuItem = {
   id: string;
@@ -23,6 +40,7 @@ export type MenuItem = {
   image: string;
   category: string;
   created_at?: string;
+  addonGroups?: AddonGroup[];
 };
 
 export type Restaurant = {
@@ -40,8 +58,11 @@ export type Restaurant = {
   coverImage: string;
   deliveryTime: string;
   minimumOrder: string;
+  deliveryCharges: number;
+  currency?: string;
   createdAt?: string;
   menuItems?: MenuItem[];
+  MenuItem?: MenuItem[];
 };
 
 export type OrderItem = {
@@ -111,35 +132,51 @@ export const searchOrders = async (
 
 
 export const getRestaurants = async (): Promise<Restaurant[]> => {
-  const { data, error } = await supabase
-    .from("Restaurant")
-    .select(
-      `
-      *,
-      MenuItem (*)
-    `
-    )
-    .order("name");
+  try {
+    console.log("Fetching all restaurants via Web API...");
+    const data = await getRestaurantsFromAPI();
+    return data || [];
+  } catch (error: any) {
+    console.error("Error fetching restaurants from Web API:", error.message);
+    console.log("Attempting fallback to direct Supabase...");
+    
+    // Fallback to direct Supabase
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from("Restaurant")
+      .select(`
+        *,
+        MenuItem (*)
+      `)
+      .order("name");
 
-  if (error) throw error;
-  return data || [];
+    if (fallbackError) throw fallbackError;
+    return fallbackData || [];
+  }
 };
 
 export const getRestaurantById = async (
   id: string
 ): Promise<Restaurant | null> => {
-  const { data, error } = await supabase
-    .from("Restaurant")
-    .select(
-      `
-      *,
-      MenuItem (*)
-    `
-    )
-    .eq("id", id)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
+  try {
+    console.log(`Fetching restaurant ${id} via Web API...`);
+    const data = await getRestaurantByIdFromAPI(id);
+    return data;
+  } catch (error: any) {
+    console.error(`Error fetching restaurant ${id} from Web API:`, error.message);
+    console.log("Attempting fallback to direct Supabase...");
+
+    const { data, error: fallbackError } = await supabase
+      .from("Restaurant")
+      .select(`
+        *,
+        MenuItem (*)
+      `)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fallbackError) throw fallbackError;
+    return data;
+  }
 };
 
 export const getRestaurantsByFilters = async ({
@@ -155,21 +192,31 @@ export const getRestaurantsByFilters = async ({
   area?: string;
   minRating?: number;
 }): Promise<Restaurant[]> => {
-  let query = supabase.from("Restaurant").select(`
-      *,
-      MenuItem (*)
-    `);
+  try {
+    const allRestaurants = await getRestaurants(); // Now using API call
+    let filteredData = allRestaurants;
 
-  if (cuisineType) query = query.eq("cuisineType", cuisineType);
-  if (segment) query = query.eq("segment", segment);
-  if (city) query = query.eq("city", city);
-  if (area) query = query.eq("area", area);
-  if (minRating) query = query.gte("rating", minRating);
+    if (cuisineType) {
+      filteredData = filteredData.filter(res => res.cuisineType === cuisineType);
+    }
+    if (segment) {
+      filteredData = filteredData.filter(res => res.segment === segment);
+    }
+    if (city) {
+      filteredData = filteredData.filter(res => res.city === city);
+    }
+    if (area) {
+      filteredData = filteredData.filter(res => res.area === area);
+    }
+    if (minRating) {
+      filteredData = filteredData.filter(res => (res.rating || 0) >= minRating);
+    }
 
-  const { data, error } = await query.order("rating", { ascending: false });
-
-  if (error) throw error;
-  return data || [];
+    return filteredData.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  } catch (error) {
+    console.error("Error in getRestaurantsByFilters:", error);
+    return [];
+  }
 };
 
 // In your supabase helper file
@@ -179,20 +226,26 @@ export const searchRestaurants = async (
   longitude: number,
   radius: number = 10
 ) => {
-  if (!searchTerm.trim()) return []; // Return empty array if search term is empty
-  const { data, error } = await supabase
-    .from("Restaurant")
-    .select("*")
-    .ilike("name", `%${searchTerm}%`);
-  if (error) throw error;
+  if (!searchTerm.trim()) return [];
+  
+  try {
+    const allRestaurants = await getRestaurants(); // Now using API call
+    
+    // Search by name locally
+    const matchedRestaurants = allRestaurants.filter((res: any) => 
+      res.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
-  // Filter the data using getDistance so that only restaurants within the radius are returned.
-  const filteredData = (data || []).filter((restaurant: any) => {
-    // Ensure the restaurant has valid coordinates
-    if (!restaurant.latitude || !restaurant.longitude) return false;
-    return getDistance(latitude, longitude, restaurant.latitude, restaurant.longitude) <= radius;
-  });
-  return filteredData;
+    // Filter by distance
+    const filteredData = matchedRestaurants.filter((restaurant: any) => {
+      if (!restaurant.latitude || !restaurant.longitude) return false;
+      return getDistance(latitude, longitude, restaurant.latitude, restaurant.longitude) <= radius;
+    });
+    return filteredData;
+  } catch (error) {
+    console.error("Error in searchRestaurants:", error);
+    return [];
+  }
 };
 
 /**
@@ -209,49 +262,37 @@ export const searchMenuItems = async (
   longitude: number,
   radius: number = 10
 ) => {
-  if (!searchTerm.trim()) return []; // Return empty array if search term is empty
-
-  const { data, error } = await supabase
-    .from("MenuItem")
-    .select(`
-      *,
-      Restaurant:restaurantId (
-        id,
-        name,
-        chainName,
-        address,
-        latitude,
-        longitude,
-        cuisineType,
-        segment,
-        city,
-        area,
-        rating,
-        coverImage,
-        deliveryTime,
-        minimumOrder
-      )
-    `)
-    .or(`label.ilike.%${searchTerm}%`);
-  if (error) throw error;
-
-  // Filter menu items based on the Restaurant's coordinates.
-  const filteredData = (data || []).filter((menuItem: any) => {
-    if (
-      !menuItem.Restaurant ||
-      !menuItem.Restaurant.latitude ||
-      !menuItem.Restaurant.longitude
-    ) {
-      return false;
-    }
-    return getDistance(
-      latitude,
-      longitude,
-      menuItem.Restaurant.latitude,
-      menuItem.Restaurant.longitude
-    ) <= radius;
-  });
-  return filteredData;
+  if (!searchTerm.trim()) return [];
+  
+  try {
+    const allRestaurants = await getRestaurants(); // Now using API call
+    const results: any[] = [];
+    
+    allRestaurants.forEach((restaurant: any) => {
+      // Check distance first
+      if (!restaurant.latitude || !restaurant.longitude) return;
+      const distance = getDistance(latitude, longitude, restaurant.latitude, restaurant.longitude);
+      if (distance > radius) return;
+      
+      // Search in menuItems or MenuItem
+      const items = restaurant.menuItems || restaurant.MenuItem || [];
+      if (items && Array.isArray(items)) {
+        items.forEach((item: any) => {
+          if (item && item.label && item.label.toLowerCase().includes(searchTerm.toLowerCase())) {
+            results.push({
+              ...item,
+              Restaurant: restaurant // Include parent restaurant info
+            });
+          }
+        });
+      }
+    });
+    
+    return results;
+  } catch (error) {
+    console.error("Error in searchMenuItems:", error);
+    return [];
+  }
 };
 
 // Add this helper function to your Supabase utilities
@@ -260,17 +301,34 @@ export const getNearbyRestaurants = async (
   userLon: number,
   radius: number
 ): Promise<Restaurant[]> => {
-  const { data, error } = await supabase
-    .from('Restaurant')
-    .select('*')
-    .lt('distance', radius)
-    .order('distance', { ascending: true })
-    .rpc('nearby_restaurants_rpc', { 
-      user_lat: userLat,
-      user_lon: userLon,
-      max_distance: radius
+  try {
+    const allRestaurants = await getRestaurants(); // Now using API call
+    
+    const filteredData = allRestaurants.filter((restaurant: any) => {
+      if (!restaurant.latitude || !restaurant.longitude) return false;
+      return getDistance(userLat, userLon, restaurant.latitude, restaurant.longitude) <= radius;
     });
-
-  if (error) throw error;
-  return data as Restaurant[];
+    return filteredData as Restaurant[];
+  } catch (error) {
+    console.error("Error in getNearbyRestaurants:", error);
+    return [];
+  }
 };
+
+import { getRestaurantsFromAPI, getRestaurantByIdFromAPI, getMenuItemAddonsFromAPI } from "./api";
+
+// ... existing code ...
+
+/**
+ * Get addons for a menu item
+ * REFACTORED (Hybrid): Now uses the Vercel structure + direct Supabase Options merger.
+ */
+export const getMenuItemAddons = async (menuItemId: string, restaurantId: string): Promise<AddonGroup[]> => {
+  try {
+
+    return await getMenuItemAddonsFromAPI(restaurantId, menuItemId);
+  } catch (error) {
+    console.error('Error in getMenuItemAddons wrapper:', error);
+    return [];
+  }
+};

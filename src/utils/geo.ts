@@ -15,6 +15,7 @@ export const getDistance = (
         Math.sin(dLon / 2) *
         Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c; // Distance in km
+  return R * c; // Distance in km
+//return 0;
   };
   

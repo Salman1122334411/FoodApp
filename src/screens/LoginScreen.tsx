@@ -1,228 +1,239 @@
+console.log('DEBUG: LoginScreen.tsx module evaluation started');
 import React, { useState, useEffect } from 'react';
 import {
-  View,
-  TextInput,
-  TouchableOpacity,
-  Text,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  Image,
+    View,
+    TextInput,
+    TouchableOpacity,
+    Text,
+    Alert,
+    ActivityIndicator,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
 } from 'react-native';
+import { styles } from './LoginScreen.styles';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
-import * as Google from "expo-auth-session/providers/google";
+import { useTranslation } from 'react-i18next';
+import Constants from 'expo-constants';
+import { Colors as BrandColors } from '../constants/Colors';
+
+// Google Sign-In is only available in native standalone/dev-client builds
+const isExpoGo = Constants.appOwnership === 'expo';
+
+// Safe stub — avoids crashing in Expo Go where native modules are unavailable
+let GoogleSignin: any = null;
+let statusCodes: any = {};
+
+try {
+  if (!isExpoGo && Platform.OS !== 'web') {
+    const gsi = require('@react-native-google-signin/google-signin');
+    GoogleSignin = gsi.GoogleSignin;
+    statusCodes = gsi.statusCodes;
+    GoogleSignin.configure({
+      webClientId: '601001909197-a7i7qjqvd5aimtojh9lub8vvafer2v0u.apps.googleusercontent.com',
+    });
+  }
+} catch (e) {
+  console.warn('Google Sign-In native module not available in this environment');
+}
 
 export const LoginScreen = ({ navigation }: { navigation: any }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loadingEmail, setLoadingEmail] = useState(false);
-  const [loadingGoogle, setLoadingGoogle] = useState(false);
+    const { t } = useTranslation();
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [passwordVisible, setPasswordVisible] = useState(false);
+    const [loadingEmail, setLoadingEmail] = useState(false);
+    const [loadingGoogle, setLoadingGoogle] = useState(false);
 
-  // Simple regex for email validation
-  const validateEmail = (email: string) => {
-    const re = /\S+@\S+\.\S+/;
-    return re.test(email);
-  };
+    // Simple regex for email validation
+    const validateEmail = (email: string) => {
+        const re = /\S+@\S+\.\S+/;
+        return re.test(email);
+    };
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
-    if (!validateEmail(email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
-      return;
-    }
+    const handleLogin = async () => {
+        if (!email || !password) {
+            Alert.alert(t('common.error'), t('login.error_fill_all'));
+            return;
+        }
+        if (!validateEmail(email)) {
+            Alert.alert(t('common.error'), t('login.error_invalid_email'));
+            return;
+        }
 
-    try {
-      setLoadingEmail(true);
-      const { error, data } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+        try {
+            setLoadingEmail(true);
+            const { error, data } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
 
-      if (error) throw error;
-      console.log('Logged in user:', data.user);
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
-    } finally {
-      setLoadingEmail(false);
-    }
-  };
+            if (error) throw error;
+            console.log('Logged in user:', data.user);
+        } catch (error: any) {
+            Alert.alert(t('common.error'), error.message);
+        } finally {
+            setLoadingEmail(false);
+        }
+    };
 
-  // Google Login Logic
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    clientId: "273791797910-alhj52c7e95c5b60445dfh58dei4asnm.apps.googleusercontent.com", // Replace with your Client ID
-    redirectUri: "https://gemhdxmocjbitbbrwssb.supabase.co/auth/v1/callback", // Replace with your Expo redirect URI
-    scopes: ["profile", "email"],
-  });
+    // Google Login Logic (Native only - not available in Expo Go)
+    const handleGoogleLogin = async () => {
+        if (isExpoGo || Platform.OS === 'web' || !GoogleSignin) {
+            Alert.alert(t('common.info'), t('login.google_signin_not_available'));
+            return;
+        }
+        try {
+            setLoadingGoogle(true);
+            await GoogleSignin.hasPlayServices();
+            const userInfo = await GoogleSignin.signIn();
+            const idToken = userInfo.data?.idToken;
 
-  useEffect(() => {
-    if (response?.type === "success") {
-      const { authentication } = response;
-      if (authentication?.accessToken) {
-        signInWithSupabase(authentication.accessToken);
-      } else {
-        setLoadingGoogle(false);
-      }
-    } else if (response && response.type !== "success") {
-      // Reset loading state if login was cancelled or failed
-      setLoadingGoogle(false);
-    }
-  }, [response]);
+            if (idToken) {
+                const { data, error } = await supabase.auth.signInWithIdToken({
+                    provider: 'google',
+                    token: idToken,
+                });
 
-  const signInWithSupabase = async (accessToken: string) => {
-    try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { accessToken },
-      });
-      if (error) {
-        console.error("Google login error:", error);
-        Alert.alert("Login failed", error.message);
-      } else {
-        console.log("User:", data);
-        Alert.alert("Login successful", `Welcome ${data.user?.email}`);
-      }
-    } catch (error: any) {
-      Alert.alert("Login failed", error.message);
-    } finally {
-      setLoadingGoogle(false);
-    }
-  };
+                if (error) throw error;
+            } else {
+                throw new Error('No ID token present!');
+            }
+        } catch (error: any) {
+            if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+                console.log('User cancelled login');
+            } else if (error.code === statusCodes.IN_PROGRESS) {
+                console.log('Login in progress');
+            } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+                Alert.alert(t('common.error'), t('login.error_google_play'));
+            } else {
+                console.error('Google login error:', error);
+                Alert.alert(t('login.login_failed'), error.message);
+            }
+        } finally {
+            setLoadingGoogle(false);
+        }
+    };
 
-  return (
-    <View style={styles.container}>
-      <Image
-        source={require('../../assets/splash.png')}
-        style={styles.logo}
-        resizeMode="contain"
-      />
-      <Text style={styles.title}>Welcome Back!</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
-        editable={!(loadingEmail || loadingGoogle)}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        editable={!(loadingEmail || loadingGoogle)}
-      />
-      <TouchableOpacity 
-        style={[styles.button, (loadingEmail || loadingGoogle) && styles.buttonDisabled]} 
-        onPress={handleLogin}
-        disabled={loadingEmail || loadingGoogle}
-      >
-        {loadingEmail ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Login</Text>
-        )}
-      </TouchableOpacity>
+    return (
+        <SafeAreaView style={styles.container}>
+            <KeyboardAvoidingView
+                style={styles.container}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            >
+            <ScrollView
+                contentContainerStyle={styles.scrollContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+            >
+                {/* Logo */}
+                <Image
+                    source={require('../../assets/fiestaa-logo.png')}
+                    style={styles.logo}
+                    resizeMode="contain"
+                />
 
-      <TouchableOpacity 
-        onPress={() => navigation.navigate('SignUp')} 
-        disabled={loadingEmail || loadingGoogle}
-      >
-        <Text style={styles.linkText}>Don't have an account? Sign Up</Text>
-      </TouchableOpacity>
+                {/* Title and Description */}
+                <Text style={styles.description}>
+                    <Text style={styles.boldText}>{t('login.description_bold')}</Text> {t('login.description')}
+                </Text>
 
-      {/* Google Login Button */}
-      <TouchableOpacity
-        style={[styles.googleButton, loadingGoogle && styles.buttonDisabled]}
-        onPress={() => {
-          setLoadingGoogle(true);
-          promptAsync();
-        }}
-        disabled={loadingGoogle || !request || loadingEmail}
-      >
-        {loadingGoogle ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <>
-            <Image
-              source={require("../../assets/google-logo.png")}
-              style={styles.googleLogo}
-            />
-            <Text style={styles.googleButtonText}>Login with Google</Text>
-          </>
-        )}
-      </TouchableOpacity>
-    </View>
-  );
+                {/* Email Input */}
+                <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>{t('login.email_label')}</Text>
+                    <TextInput
+                        style={styles.input}
+                        placeholder={t('login.email_placeholder')}
+                        placeholderTextColor="#9CA3AF"
+                        value={email}
+                        onChangeText={setEmail}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        editable={!(loadingEmail || loadingGoogle)}
+                        underlineColorAndroid="transparent"
+                    />
+                </View>
+
+                {/* Password Input */}
+                <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>{t('login.password_label')}</Text>
+                    <View style={styles.passwordInputContainer}>
+                        <TextInput
+                            style={[styles.input, styles.passwordInput]}
+                            placeholder={t('login.password_placeholder')}
+                            placeholderTextColor="#9CA3AF"
+                            value={password}
+                            onChangeText={setPassword}
+                            secureTextEntry={!passwordVisible}
+                            editable={!(loadingEmail || loadingGoogle)}
+                            underlineColorAndroid="transparent"
+                        />
+                        <TouchableOpacity
+                            style={styles.passwordVisibilityButton}
+                            onPress={() => setPasswordVisible(!passwordVisible)}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                            <Ionicons
+                                name={passwordVisible ? "eye" : "eye-off"}
+                                size={24}
+                                color="#9CA3AF"
+                            />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                {/* Sign In Button */}
+                <TouchableOpacity
+                    style={[styles.button, (loadingEmail || loadingGoogle) && styles.buttonDisabled]}
+                    onPress={handleLogin}
+                    disabled={loadingEmail || loadingGoogle}
+                >
+                    {loadingEmail ? (
+                        <ActivityIndicator color="#fff" />
+                    ) : (
+                        <Text style={styles.buttonText}>{t('login.sign_in')}</Text>
+                    )}
+                </TouchableOpacity>
+
+                {/* Separator */}
+                <View style={styles.separator}>
+                    <View style={styles.separatorLine} />
+                    <Text style={styles.separatorText}>{t('login.or')}</Text>
+                    <View style={styles.separatorLine} />
+                </View>
+
+                {/* Google Login Button */}
+                <TouchableOpacity
+                    style={[styles.googleButton, loadingGoogle && styles.googleButtonDisabled]}
+                    onPress={handleGoogleLogin}
+                    disabled={loadingGoogle || loadingEmail}
+                >
+                    {loadingGoogle ? (
+                        <ActivityIndicator color="#374151" />
+                    ) : (
+                        <>
+                            <Image
+                                source={require("../../assets/google-logo.png")}
+                                style={styles.googleLogo}
+                            />
+                            <Text style={styles.googleButtonText}>{t('login.sign_in_google')}</Text>
+                        </>
+                    )}
+                </TouchableOpacity>
+
+                {/* Sign Up Link */}
+                <TouchableOpacity
+                    onPress={() => navigation.navigate('SignUp')}
+                    disabled={loadingEmail || loadingGoogle}
+                    style={styles.linkContainer}
+                >
+                    <Text style={styles.linkText}>{t('login.no_account')} <Text style={styles.linkTextBold}>{t('login.sign_up_link')}</Text></Text>
+                </TouchableOpacity>
+            </ScrollView>
+            </KeyboardAvoidingView>
+        </SafeAreaView>
+    );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-    alignItems: 'center',
-  },
-  logo: {
-    width: 150,
-    height: 150,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 30,
-    textAlign: 'center',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 15,
-    width: '100%',
-  },
-  button: {
-    backgroundColor: '#FF6B6B',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 15,
-    width: '100%',
-  },
-  buttonDisabled: {
-    backgroundColor: '#ffb5b5',
-  },
-  buttonText: {
-    color: '#fff',
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
-  linkText: {
-    color: '#FF6B6B',
-    textAlign: 'center',
-  },
-  googleButton: {
-    backgroundColor: '#FF6B6B',
-    padding: 15,
-    borderRadius: 8,
-    marginTop: 15,
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  googleLogo: {
-    width: 24,
-    height: 24,
-    marginRight: 10,
-  },
-  googleButtonText: {
-    color: '#fff',
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
-});

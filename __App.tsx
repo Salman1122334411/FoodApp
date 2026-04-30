@@ -82,7 +82,7 @@ export default function App() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FF4B2B" />
+        <ActivityIndicator size="large" color="#F53000" />
         <Text style={styles.loadingText}>Loading restaurants...</Text>
       </View>
     );
@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
-    color: '#FF4B2B',
+    color: '#F53000',
     textAlign: 'center',
     marginBottom: 20,
   },
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   retryButton: {
-    backgroundColor: '#FF4B2B',
+    backgroundColor: '#F53000',
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,

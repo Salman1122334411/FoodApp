@@ -2,599 +2,265 @@ import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
-  StyleSheet,
-  TouchableOpacity,
   ScrollView,
-  TextInput,
-  Alert,
+  TouchableOpacity,
+  Image,
   ActivityIndicator,
-  Image ,
+  Alert,
 } from "react-native";
-import { useCart } from "../hooks/useCart";
-import { supabase } from "../lib/supabase";
+import { styles } from "./CartScreen.styles";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
-import cuid from "cuid";
-import { getDistance } from "../utils/geo"; // Make sure this utility is available
-interface Address {
-  id: string;
-  label: string;
-  streetAddress: string;
-  city: string;
-  state: string;
-  zipCode: string;
-  phoneNumber: string;
-  latitude?: number;
-  longitude?: number;
-  isDefault: boolean;
-}
+import { useCart, calculateItemSubtotal } from "../hooks/useCart";
+import { formatPrice } from "../utils/currency";
+import { useTranslation } from "react-i18next";
+import { Colors as BrandColors } from "../constants/Colors";
+import { useSettings } from "../hooks/useSettings";
+import { getRestaurantById } from "../lib/supabase";
+import { getDistance } from "../utils/geo";
+import { CustomConfirmModal } from "../components/CustomConfirmModal";
+import { useAddress } from "../hooks/useAddress";
 
-export function CartScreen({ navigation }: { navigation: any }) {
-  const { cartItems, removeFromCart, clearCart, addToCart } = useCart();
-  const [addresses, setAddresses] = useState<Address[]>([]);
-  const [selectedAddress, setSelectedAddress] = useState<Address | null>(null);
-  const [newAddress, setNewAddress] = useState<Partial<Address>>({});
-  const [useNewAddress, setUseNewAddress] = useState(false);
+export const CartScreen: React.FC<{ navigation: any; route: any }> = ({ navigation, route }) => {
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const { deliveryRadius } = useSettings();
+  const { cartItems, removeFromCart, clearCart } = useCart();
+  const { selectedAddress, fetchAddresses } = useAddress();
+
   const [loading, setLoading] = useState(false);
-  const [addressesLoading, setAddressesLoading] = useState(true); // New state for addresses loading
-
-  const [validationErrors, setValidationErrors] = useState<{
-    streetAddress?: string;
-    city?: string;
-    state?: string;
-    zipCode?: string;
-    phoneNumber?: string;
-  }>({});
+  const [expandedRestId, setExpandedRestId] = useState<string | null>(null);
+  const [restaurantDeliveryTimes, setRestaurantDeliveryTimes] = useState<Record<string, string>>({});
+  const [isClearModalVisible, setIsClearModalVisible] = useState(false);
 
   useEffect(() => {
     fetchAddresses();
   }, []);
 
-  const validateAddress = () => {
-    const errors: typeof validationErrors = {};
+  useEffect(() => {
+    const fetchDeliveryTimes = async () => {
+      const times: Record<string, string> = {};
+      const uniqueRestaurantIds = [...new Set(cartItems.map(i => i.restaurantId))];
+      await Promise.all(uniqueRestaurantIds.map(async (id) => {
+        try {
+          const restaurantData = await getRestaurantById(id);
+          if (restaurantData && restaurantData.deliveryTime) {
+            times[id] = restaurantData.deliveryTime;
+          }
+        } catch (e) {
+          console.error("Error fetching delivery time for", id, e);
+        }
+      }));
+      setRestaurantDeliveryTimes(times);
+    };
 
-    // Street Address validation
-    if (!newAddress.streetAddress?.trim()) {
-      errors.streetAddress = "Street address is required";
+    if (cartItems.length > 0) {
+      fetchDeliveryTimes();
     }
+  }, [cartItems]);
 
-    // City validation
-    if (!newAddress.city?.trim()) {
-      errors.city = "City is required";
-    }
-
-    // State validation
-    if (!newAddress.state?.trim()) {
-      errors.state = "State is required";
-    } else if (!/^[A-Za-z\s]{2,50}$/.test(newAddress.state.trim())) {
-      errors.state = "State must be a valid name (e.g., Pakistan, India)";
-    }
-
-    // Zip code validation
-    if (!newAddress.zipCode?.trim()) {
-      errors.zipCode = "Postal code is required";
-    } else if (!/^\d{5}(-\d{4})?$/.test(newAddress.zipCode.trim())) {
-      errors.zipCode = "Invalid postal code format";
-    }
-
-    if (!newAddress.phoneNumber?.trim()) {
-      errors.phoneNumber = "Phone number is required";
-    } else if (!/^\d{11}$/.test(newAddress.phoneNumber.trim())) {
-      errors.phoneNumber = "Phone number must be exactly 11 digits long";
-    }
-
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const fetchAddresses = async () => {
-    setAddressesLoading(true); // Set loading state to true before fetching
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No user found");
-      const { data, error } = await supabase
-        .from("Address")
-        .select(
-          "id, label, streetAddress, city, state, zipCode, phoneNumber, latitude, longitude, isDefault"
-        )
-        .eq("userId", user.id)
-        .order("isDefault", { ascending: false });
-
-      if (error) throw error;
-      setAddresses(data || []);
-      if (data && data.length > 0) {
-        const defaultAddress = data.find((addr) => addr.isDefault) || data[0];
-        setSelectedAddress(defaultAddress);
-      }
-    } catch (error) {
-      console.error("Error fetching addresses:", error);
-      Alert.alert("Error", "Failed to load addresses");
-    } finally {
-      setAddressesLoading(false); // Set loading state to false after fetching
-    }
-  };
-
-  // Group items by restaurantId
   const groupedItems = cartItems.reduce((acc, item) => {
     if (!acc[item.restaurantId]) {
       acc[item.restaurantId] = {
         name: item.restaurantName,
         items: [],
+        restaurantCurrency: item.restaurantCurrency,
       };
     }
     acc[item.restaurantId].items.push(item);
     return acc;
-  }, {} as Record<string, { name: string; items: typeof cartItems }>);
+  }, {} as Record<string, { name: string; items: any[]; restaurantCurrency: string }>);
 
-  // Check if cart has items from more than one restaurant
-  const multipleRestaurants = Object.keys(groupedItems).length > 1;
-
-  const total = cartItems.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0
-  );
-
-  const handleCheckout = async () => {
-    // Prevent checkout if items from multiple restaurants are present
-    if (multipleRestaurants) {
-      Alert.alert(
-        "Order Restriction",
-        "You can only order items from one restaurant at a time. Please remove items from other restaurants."
-      );
-      return;
-    }
-
+  const handleCheckout = async (restaurantId: string) => {
     try {
       setLoading(true);
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No user found");
-
-      let deliveryAddress = selectedAddress;
-
-      // Handle new address if enabled
-      if (useNewAddress) {
-        if (!validateAddress()) {
-          Alert.alert(
-            "Validation Error",
-            "Please correct the address information"
-          );
-          return;
-        }
-        const currentTimestamp = new Date().toISOString();
-        // Insert new address
-        const { data: addressData, error: addressError } = await supabase
-          .from("Address")
-          .insert([
-            {
-              id: cuid(),
-              userId: user.id,
-              label: newAddress.label || "Home",
-              streetAddress: newAddress.streetAddress,
-              city: newAddress.city,
-              state: newAddress.state,
-              zipCode: newAddress.zipCode,
-              phoneNumber: newAddress.phoneNumber,
-              latitude: newAddress.latitude || null,
-              longitude: newAddress.longitude || null,
-              isDefault: newAddress.isDefault || false,
-              updatedAt: currentTimestamp,
-            },
-          ])
-          .select()
-          .maybeSingle();
-        if (addressError) throw addressError;
-        deliveryAddress = addressData;
-      }
-
-      if (!deliveryAddress) {
-        Alert.alert("Error", "Please select or add a delivery address");
+      
+      if (!selectedAddress) {
+        Alert.alert(t('common.error'), t('cart.no_address_message'));
         return;
       }
-      const restaurantId = Object.keys(groupedItems)[0];
-      // Fetch restaurant details (including its location)
-      const { data: restaurantData, error: restaurantError } = await supabase
-        .from("Restaurant")
-        .select("id, latitude, longitude")
-        .eq("id", restaurantId)
-        .maybeSingle();
-      if (restaurantError || !restaurantData) {
-        throw new Error("Failed to fetch restaurant data");
+
+      const restaurantData = await getRestaurantById(restaurantId);
+      if (!restaurantData) throw new Error("Failed to fetch restaurant data");
+
+      if (!restaurantData.latitude || !restaurantData.longitude) {
+        Alert.alert(t('common.error'), t('cart.location_missing'));
+        return;
       }
-      // Ensure both the address and restaurant have valid coordinates.
-      if (
-        !deliveryAddress.latitude ||
-        !deliveryAddress.longitude ||
-        !restaurantData.latitude ||
-        !restaurantData.longitude
-      ) {
+
+      let distance = 0;
+      if (selectedAddress.latitude && selectedAddress.longitude) {
+        distance = getDistance(
+          selectedAddress.latitude,
+          selectedAddress.longitude,
+          restaurantData.latitude,
+          restaurantData.longitude
+        );
+      }
+
+      const maxRadius = deliveryRadius > 0 ? deliveryRadius : 10;
+      if (distance > maxRadius) {
         Alert.alert(
-          "Invalid Address Error",
-          "Missing location information for the address or restaurant."
+          t('cart.out_of_range_title'),
+          t('cart.out_of_range_message', { distance: distance.toFixed(1), maxRadius })
         );
         return;
       }
 
-      // Calculate the distance using the utility function.
-      const distance = getDistance(
-        deliveryAddress.latitude,
-        deliveryAddress.longitude,
-        restaurantData.latitude,
-        restaurantData.longitude
-      );
-
-      // If the address is too far (e.g., more than 10 km), show a modal alert.
-      if (distance > 10) {
-        Alert.alert(
-          "Address Out of Range",
-          "The current location selected does not have that restaurant available in its area. Please choose a different address."
-        );
-        return;
-      }
-      // Proceed to checkout if only one restaurant's items are in the cart
       navigation.navigate("CheckoutScreen", {
-        deliveryAddress, // Pass the selected address info
+        deliveryAddress: selectedAddress,
+        restaurantId: restaurantId,
       });
     } catch (error) {
-      console.error("Checkout preparation error:", error);
-      Alert.alert("Error", "Failed to proceed to checkout");
+      console.error("Checkout prep error:", error);
+      Alert.alert(t('common.error'), t('cart.checkout_error'));
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FF4B2B" />
-      </View>
-    );
-  }
-
   if (cartItems.length === 0) {
     return (
-      <View style={styles.container}>
-        <View style={styles.emptyCartContainer}>
-          <Image
-            source={require("../../assets/hungryIcon.png")}
-            style={styles.emptyCartImage}
-          />
-          <Text style={styles.emptyCartText}>Your cart is empty!</Text>
-        </View>
-      </View>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <ScrollView contentContainerStyle={styles.scrollViewContent}>
+          <View style={styles.emptyCartContainer}>
+            <Ionicons name="cart-outline" size={100} color="#E5E7EB" style={{ marginBottom: 10 }} />
+            <Text style={styles.emptyCartText}>{t('cart.empty', 'Your cart is empty.')}</Text>
+          </View>
+
+          <View style={styles.promoCard}>
+            <View style={styles.promoIconContainer}>
+              <Ionicons name="restaurant" size={32} color="#FF5221" />
+            </View>
+            <Text style={styles.promoTitle}>{t('cart.hungry_for_more', 'Hungry for more?')}</Text>
+            <Text style={styles.promoSubtitle}>
+              {t('cart.explore_new_flavors', 'Explore new flavors from top-rated restaurants near you.')}
+            </Text>
+            <TouchableOpacity style={styles.promoButton} onPress={() => navigation.navigate('Home')}>
+              <Text style={styles.promoButtonText}>{t('cart.start_new_cart', 'Start a New Cart')}</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <ScrollView style={styles.scrollView}>
-        {/* Restaurant Items Section */}
-        {Object.entries(groupedItems).map(([restaurantId, { name, items }]) => (
-          <View key={restaurantId} style={styles.restaurantSection}>
-            <Text style={styles.restaurantName}>{name}</Text>
-            {items.map((item) => (
-              <View key={item.name} style={styles.cartItem}>
-                <View style={styles.itemInfo}>
-                  <Text style={styles.itemName}>{item.name}</Text>
-                  <Text style={styles.itemPrice}>${item.price.toFixed(2)}</Text>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.subHeader}>
+        <Text style={styles.activeOrdersLabel}>{t('cart.active_orders', 'Active Orders')}</Text>
+        <View style={styles.headerTopRow}>
+          <Text style={styles.activeOrdersCount}>
+            {t('cart.active_orders_count', { count: Object.keys(groupedItems).length })}
+          </Text>
+          <TouchableOpacity onPress={() => setIsClearModalVisible(true)} style={styles.clearCartButton}>
+            <Text style={styles.clearCartText}>{t('common.clear', 'Clear')}</Text>
+            <Ionicons name="trash-outline" size={18} color="#6B7280" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollViewContent, { paddingBottom: insets.bottom + 20 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {Object.entries(groupedItems).map(([restaurantId, group]) => {
+          const { name, items } = group;
+          const isExpanded = expandedRestId === restaurantId;
+          const subtotal = items.reduce((sum, item) => 
+            sum + calculateItemSubtotal(item.price, item.quantity, item.selectedOptions), 0
+          );
+
+          return (
+            <View key={restaurantId} style={styles.summaryCard}>
+              <View style={styles.cardTopRow}>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.badgePill}>
+                    <Text style={styles.badgeText}>{t('cart.hot_and_fresh', 'HOT & FRESH')}</Text>
+                  </View>
+                  <Text style={styles.restaurantName} numberOfLines={1}>{name}</Text>
+                  <Text style={styles.itemCountText}>
+                    {t('cart.items_waiting_count', { count: items.length })}
+                  </Text>
                 </View>
-                <View style={styles.quantityContainer}>
-                  <TouchableOpacity
-                    style={styles.quantityButton}
-                    onPress={() => removeFromCart(item.id)}
-                  >
-                    <Text style={styles.quantityButtonText}>-</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.quantity}>{item.quantity}</Text>
-                  <TouchableOpacity
-                    style={styles.quantityButton}
-                    onPress={() => {
-                      const newItem = { ...item, quantity: 1 };
-                      addToCart(newItem);
-                    }}
-                  >
-                    <Text style={styles.quantityButtonText}>+</Text>
-                  </TouchableOpacity>
+                
+                <View style={styles.subtotalContainer}>
+                  <Text style={styles.subtotalValue}>
+                    {formatPrice(subtotal, items[0].restaurantCurrency)}
+                  </Text>
+                  <Text style={styles.subtotalLabel}>{t('cart.subtotal', 'Subtotal')}</Text>
+                  {restaurantDeliveryTimes[restaurantId] && (
+                    <View style={styles.deliveryTimeContainer}>
+                      <Ionicons name="time-outline" size={16} color="#6B7280" />
+                      <Text style={styles.deliveryTimeTextInline}>
+                        {restaurantDeliveryTimes[restaurantId]} {t('common.min', 'min')}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </View>
-            ))}
-          </View>
-        ))}
 
-        {/* If items are from multiple restaurants, show an error message */}
-        {multipleRestaurants && (
-          <Text style={styles.restrictionText}>
-            You can only order items from one restaurant at a time. Please
-            remove items from other restaurants.
-          </Text>
-        )}
-
-        {/* Address Section */}
-        {/* Address Section */}
-        <View style={styles.addressSection}>
-          <Text style={styles.sectionTitle}>Delivery Address</Text>
-          <TouchableOpacity
-            style={styles.addressOption}
-            onPress={() => {
-              setUseNewAddress(false);
-            }}
-          >
-            <Ionicons name="location-outline" size={24} color="#FF4B2B" />
-            <Text style={styles.addressOptionText}>Manage Saved Addresses</Text>
-          </TouchableOpacity>
-          {!useNewAddress &&
-            (addressesLoading ? (
-              <ActivityIndicator size="small" color="#FF4B2B" />
-            ) : addresses.length === 0 ? (
-              <Text style={styles.noAddressMessage}>
-                No saved addresses available.
-              </Text>
-            ) : (
-              <View style={styles.savedAddresses}>
-                {addresses.map((address) => (
-                  <TouchableOpacity
-                    key={address.id}
-                    style={[
-                      styles.addressCard,
-                      selectedAddress?.id === address.id &&
-                        styles.selectedAddress,
-                    ]}
-                    onPress={() => {
-                      setSelectedAddress(address);
-                      setUseNewAddress(false);
-                    }}
-                  >
-                    <Text style={styles.addressText}>
-                      {address.label}: {address.streetAddress}
-                    </Text>
-                    <Text style={styles.addressText}>
-                      {address.city}, {address.state} {address.zipCode}
-                    </Text>
-                    <Text style={styles.addressText}>
-                      Phone: {address.phoneNumber}
-                    </Text>
-                    {address.isDefault && (
-                      <Text style={styles.defaultBadge}>Default</Text>
-                    )}
-                  </TouchableOpacity>
+              <View style={styles.itemPreviewList}>
+                {items.slice(0, 4).map((item, idx) => (
+                  <Image key={idx} source={{ uri: item.image }} style={styles.itemPreviewImage} />
                 ))}
               </View>
-            ))}
-        </View>
+
+              <TouchableOpacity 
+                style={styles.primaryButton}
+                onPress={() => handleCheckout(restaurantId)}
+                activeOpacity={0.9}
+              >
+                {loading ? <ActivityIndicator color="#fff" /> : (
+                  <Text style={styles.primaryButtonText}>{t('cart.continue_to_checkout', 'Continue to Checkout')}</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.secondaryButton}
+                onPress={() => setExpandedRestId(isExpanded ? null : restaurantId)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.secondaryButtonContent}>
+                  <Text style={styles.secondaryButtonText}>
+                    {isExpanded ? t('cart.hide_details', 'Hide Details') : t('cart.view_details', 'View Details')}
+                  </Text>
+                  <Ionicons name={isExpanded ? "chevron-up" : "chevron-forward"} size={20} color="#111827" />
+                </View>
+              </TouchableOpacity>
+
+              {isExpanded && (
+                <View style={styles.detailsContainer}>
+                  {items.map((item, idx) => (
+                    <View key={idx} style={styles.detailItem}>
+                      <Text style={styles.detailItemName}>
+                        {item.quantity}x {item.name}
+                      </Text>
+                      <Text style={styles.detailItemPrice}>
+                        {formatPrice(calculateItemSubtotal(item.price, item.quantity, item.selectedOptions), item.restaurantCurrency)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          );
+        })}
       </ScrollView>
 
-      {cartItems.length > 0 && (
-        <View style={styles.footer}>
-          <View style={styles.totalContainer}>
-            <Text style={styles.totalText}>Total:</Text>
-            <Text style={styles.totalAmount}>${total.toFixed(2)}</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.checkoutButton}
-            onPress={() => {
-              if (multipleRestaurants) {
-                Alert.alert(
-                  "Order Restriction",
-                  "You can only order items from one restaurant at a time. Please remove items from other restaurants."
-                );
-              } else if (!selectedAddress && !useNewAddress) {
-                Alert.alert(
-                  "No Address Selected",
-                  "Please select or add an address to proceed with your order."
-                );
-              } else {
-                handleCheckout();
-              }
-            }}
-            disabled={loading} // Only disable when loading
-          >
-            <Text style={styles.checkoutButtonText}>
-              {loading ? "Processing..." : "Place Order"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
+      <CustomConfirmModal
+        isVisible={isClearModalVisible}
+        title={t('cart.clear_cart_confirm_title', 'Clear Cart?')}
+        message={t('cart.clear_cart_confirm_message', 'Are you sure you want to remove all items from your cart?')}
+        onConfirm={() => {
+          clearCart();
+          setIsClearModalVisible(false);
+        }}
+        onCancel={() => setIsClearModalVisible(false)}
+        confirmText={t('common.clear', 'Clear')}
+        confirmColor="#FF5221"
+      />
+    </SafeAreaView>
   );
-}
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-  scrollView: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  restaurantSection: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  restaurantName: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 12,
-  },
-  cartItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 8,
-  },
-  itemInfo: {
-    flex: 1,
-  },
-  itemName: {
-    fontSize: 16,
-    color: "#1F2937",
-  },
-  itemPrice: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#FF4B2B",
-    marginTop: 4,
-  },
-  noAddressMessage: {
-    color: "#888",
-    fontSize: 16,
-    textAlign: "center",
-    marginVertical: 10,
-  },
-  quantityContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F3F4F6",
-    borderRadius: 8,
-    overflow: "hidden",
-  },
-  quantityButton: {
-    padding: 8,
-    width: 36,
-    alignItems: "center",
-  },
-  quantityButtonText: {
-    fontSize: 18,
-    color: "#FF4B2B",
-    fontWeight: "bold",
-  },
-  quantity: {
-    paddingHorizontal: 12,
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  addressSection: {
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 12,
-  },
-  addressOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  selectedOption: {
-    backgroundColor: "#FEE2E2",
-  },
-  addressOptionText: {
-    marginLeft: 8,
-    fontSize: 16,
-    color: "#1F2937",
-  },
-  savedAddresses: {
-    marginVertical: 12,
-  },
-  addressCard: {
-    padding: 12,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  selectedAddress: {
-    backgroundColor: "#FEE2E2",
-    borderColor: "#FF4B2B",
-    borderWidth: 1,
-  },
-  addressText: {
-    fontSize: 14,
-    color: "#4B5563",
-    marginBottom: 4,
-  },
-  defaultBadge: {
-    color: "#FF4B2B",
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 4,
-  },
-  form: {
-    gap: 12,
-    marginTop: 12,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-  },
-  footer: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-    backgroundColor: "#fff",
-  },
-  totalContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  totalText: {
-    fontSize: 18,
-    color: "#1F2937",
-  },
-  totalAmount: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#FF4B2B",
-  },
-  checkoutButton: {
-    backgroundColor: "#FF4B2B",
-    padding: 16,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  checkoutButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  inputError: {
-    borderColor: "red",
-    borderWidth: 1,
-  },
-  restrictionText: {
-    fontSize: 16,
-    color: "#FF4B2B",
-    textAlign: "center",
-    marginVertical: 10,
-    paddingHorizontal: 16,
-  },
-  errorText: {
-    color: "red",
-    fontSize: 12,
-    marginBottom: 5,
-  },
-  emptyCartContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-  emptyCartImage: {
-    width: 100,
-    height: 100,
-    marginBottom: 20,
-    // resizeMode: "contain" // optional
-  },
-  emptyCartText: {
-    fontSize: 16,
-    color: "#333",
-    textAlign: "center",
-  },
-});
+};

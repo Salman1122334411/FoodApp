@@ -8,12 +8,493 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+model User {
+  id             String          @id @default(uuid())
+  email          String          @unique
+  name           String?
+  role           UserRole        @default(CUSTOMER)
+  approvalStatus ApprovalStatus?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  phoneNumber    String?         @unique
+  dob            DateTime?
+  provider       String          @default("email")
+  addresses      Address[]
+  driver         Driver?
+  orders         Order[]
+  Shift          Shift[]
+  vendorProfile  VendorProfile?
+}
+
+model VendorProfile {
+  id           String       @id @default(cuid())
+  userId       String       @unique
+  businessName String
+  documents    Json?
+  approvedAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  restaurants  Restaurant[]
+  user         User         @relation(fields: [userId], references: [id])
+}
+
+model Address {
+  id            String   @id @default(cuid())
+  userId        String
+  label         String   @default("Home")
+  streetAddress String
+  city          String
+  state         String
+  zipCode       String
+  latitude      Float?
+  longitude     Float?
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  phoneNumber   String?
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Restaurant {
+  id                      String            @id @default(cuid())
+  name                    String
+  chainName               String
+  address                 String
+  latitude                Float
+  longitude               Float
+  cuisineType             String
+  segment                 String
+  city                    String
+  area                    String
+  rating                  Float?
+  coverImage              String?
+  deliveryTime            String?
+  minimumOrder            String?
+  spottedDate             DateTime?
+  closedDate              DateTime?
+  vendorId                String
+  isActive                Boolean           @default(true)
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  country                 String?
+  coverImagesList         String[]
+  currency                String?
+  deliveryCharges         Float?
+  isServiceChargeOptional Boolean           @default(false)
+  isTaxIncluded           Boolean           @default(false)
+  serviceChargeRate       Float?            @default(0)
+  taxRate                 Float?            @default(0)
+  acceptsScheduledOrders  Boolean           @default(false)
+  deliverySlotDuration    Int?
+  description             String?
+  logo                    String?
+  operatingHours          Json?
+  preparationTime         Int?
+  storeCategory           String?
+  storeType               StoreType         @default(RESTAURANT)
+  tags                    String[]
+  addonGroups             AddonGroup[]
+  DeliverySlot            DeliverySlot[]
+  Discount                Discount[]
+  menuItems               MenuItem[]
+  orders                  Order[]
+  POSOrder                POSOrder[]
+  ProductCategory         ProductCategory[]
+  vendor                  VendorProfile     @relation(fields: [vendorId], references: [id])
+  Shift                   Shift[]
+
+  @@index([vendorId])
+}
+
+model MenuItem {
+  id                String           @id @default(cuid())
+  label             String
+  description       String?
+  price             Float
+  image             String?
+  category          String
+  restaurantId      String
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  spicy             SpicyLevel?
+  barcode           String?
+  brand             String?
+  categoryId        String?
+  isAvailable       Boolean          @default(true)
+  itemTags          String[]
+  lowStockThreshold Int?
+  pricingType       PricingType      @default(FIXED)
+  sku               String?
+  stockQuantity     Int?
+  trackStock        Boolean          @default(false)
+  unit              String?
+  unitQuantity      Float?
+  weight            Float?
+  ProductCategory   ProductCategory? @relation(fields: [categoryId], references: [id])
+  restaurant        Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  addonGroups       MenuItemAddon[]
+  orderItems        OrderItem[]
+  POSOrderItem      POSOrderItem[]
+}
+
+model Driver {
+  id            String           @id @default(cuid())
+  userId        String           @unique
+  status        String           @default("OFFLINE")
+  currentLat    Float?
+  currentLng    Float?
+  lastLocation  DateTime?
+  activeOrderId String?          @unique
+  rating        Float?
+  totalOrders   Int              @default(0)
+  vehicleType   String
+  documents     Json?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  activeOrder   Order?           @relation("ActiveDelivery", fields: [activeOrderId], references: [id])
+  user          User             @relation(fields: [userId], references: [id])
+  locations     DriverLocation[]
+  stats         DriverStats?
+  orders        Order[]          @relation("DriverOrders")
+}
+
+model DriverLocation {
+  id        String   @id @default(cuid())
+  driverId  String
+  lat       Float
+  lng       Float
+  timestamp DateTime @default(now())
+  driver    Driver   @relation(fields: [driverId], references: [id])
+
+  @@index([driverId, timestamp])
+}
+
+model DriverStats {
+  id              String    @id @default(cuid())
+  driverId        String    @unique
+  totalDeliveries Int       @default(0)
+  totalEarnings   Float     @default(0)
+  averageRating   Float?
+  completionRate  Float     @default(0)
+  lastPayout      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  driver          Driver    @relation(fields: [driverId], references: [id])
+}
+
+model Order {
+  id                  String      @id @default(cuid())
+  userId              String
+  restaurantId        String
+  status              String      @default("PENDING")
+  totalAmount         Float
+  deliveryAddress     String
+  driverId            String?
+  pickupLat           Float?
+  pickupLng           Float?
+  dropoffLat          Float?
+  dropoffLng          Float?
+  assignedAt          DateTime?
+  pickedUpAt          DateTime?
+  deliveredAt         DateTime?
+  estimatedTime       Int?
+  actualTime          Int?
+  driverRating        Int?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  specialInstructions String?
+  paymentMethod       String      @default("cod")
+  orderType           String      @default("DELIVERY")
+  phoneNumber         String?
+  giftMessage         String?
+  isGift              Boolean     @default(false)
+  orderVertical       String?
+  recipientName       String?
+  recipientPhone      String?
+  scheduledDate       DateTime?
+  scheduledSlot       String?
+  substitutionPref    String?     @default("contact")
+  assignedDriver      Driver?     @relation("ActiveDelivery")
+  driver              Driver?     @relation("DriverOrders", fields: [driverId], references: [id])
+  restaurant          Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItems          OrderItem[]
+  posOrder            POSOrder?
+}
+
+model OrderItem {
+  id              String   @id @default(cuid())
+  orderId         String
+  menuItemId      String
+  quantity        Int
+  options         Json?
+  price           Float
+  name            String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  actualPrice     Float?
+  actualQuantity  Float?
+  isSubstituted   Boolean  @default(false)
+  substitutedWith String?
+  menuItem        MenuItem @relation(fields: [menuItemId], references: [id])
+  order           Order    @relation(fields: [orderId], references: [id])
+}
+
+model POSOrder {
+  id             String         @id @default(cuid())
+  orderId        String         @unique
+  restaurantId   String
+  type           String         @default("walkin")
+  status         String         @default("OPEN")
+  notes          String?
+  createdBy      String
+  totalAmount    Float          @default(0)
+  discountAmount Float          @default(0)
+  taxAmount      Float          @default(0)
+  serviceCharge  Float          @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  restaurant     Restaurant     @relation(fields: [restaurantId], references: [id])
+  items          POSOrderItem[]
+  payments       POSPayment[]
+  receipts       Receipt[]
+
+  @@index([restaurantId, status])
+  @@index([orderId])
+}
+
+model POSOrderItem {
+  id         String   @id @default(cuid())
+  posOrderId String
+  menuItemId String
+  quantity   Int
+  price      Float
+  name       String
+  options    Json?
+  discount   Float    @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  posOrder   POSOrder @relation(fields: [posOrderId], references: [id])
+}
+
+model POSPayment {
+  id         String   @id @default(cuid())
+  posOrderId String
+  method     String
+  amount     Float
+  createdBy  String
+  createdAt  DateTime @default(now())
+  posOrder   POSOrder @relation(fields: [posOrderId], references: [id])
+}
+
+model Shift {
+  id             String            @id @default(cuid())
+  restaurantId   String
+  userId         String
+  openedAt       DateTime          @default(now())
+  closedAt       DateTime?
+  openingFloat   Float             @default(0)
+  closingAmount  Float?
+  cashIn         Float             @default(0)
+  cashOut        Float             @default(0)
+  cashSales      Float             @default(0)
+  cardSales      Float             @default(0)
+  qrSales        Float             @default(0)
+  totalDiscounts Float             @default(0)
+  canceledOrders Int               @default(0)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  transactions   CashTransaction[]
+  restaurant     Restaurant        @relation(fields: [restaurantId], references: [id])
+  user           User              @relation(fields: [userId], references: [id])
+
+  @@index([restaurantId, openedAt])
+}
+
+model CashTransaction {
+  id        String   @id @default(cuid())
+  shiftId   String
+  type      String
+  amount    Float
+  reason    String?
+  createdBy String
+  createdAt DateTime @default(now())
+  shift     Shift    @relation(fields: [shiftId], references: [id])
+}
+
+model Discount {
+  id            String     @id @default(cuid())
+  restaurantId  String
+  name          String
+  type          String
+  value         Float
+  minOrderValue Float?
+  roleRequired  String?
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [id])
+
+  @@index([restaurantId])
+}
+
+model Receipt {
+  id         String   @id @default(cuid())
+  posOrderId String
+  jsonData   Json
+  createdBy  String
+  createdAt  DateTime @default(now())
+  posOrder   POSOrder @relation(fields: [posOrderId], references: [id])
+}
+
+model Settings {
+  id                       String   @id @default("app-settings")
+  appName                  String   @default("FoodApp")
+  appLogo                  String?  @default("")
+  defaultCurrency          String   @default("USD")
+  timezone                 String   @default("UTC")
+  language                 String   @default("en")
+  maintenanceMode          Boolean  @default(false)
+  restaurantRadius         Float    @default(10)
+  maxFileUploadSize        String   @default("10")
+  sessionTimeout           String   @default("30")
+  enableApiRateLimit       Boolean  @default(true)
+  apiRateLimit             String   @default("1000")
+  enableCaching            Boolean  @default(true)
+  cacheExpiry              String   @default("3600")
+  paymentGateway           String   @default("stripe")
+  stripePublicKey          String?  @default("")
+  stripeSecretKey          String?  @default("")
+  paypalClientId           String?  @default("")
+  paypalSecret             String?  @default("")
+  enableCod                Boolean  @default(true)
+  transactionFee           String   @default("2.5")
+  emailNotifications       Boolean  @default(true)
+  smsNotifications         Boolean  @default(false)
+  pushNotifications        Boolean  @default(true)
+  orderNotifications       Boolean  @default(true)
+  systemNotifications      Boolean  @default(true)
+  requireTwoFactor         Boolean  @default(false)
+  passwordMinLength        String   @default("8")
+  passwordRequireUppercase Boolean  @default(true)
+  passwordRequireNumbers   Boolean  @default(true)
+  passwordRequireSpecial   Boolean  @default(true)
+  sessionMaxAge            String   @default("7")
+  enableIpWhitelist        Boolean  @default(false)
+  googleMapsApiKey         String?  @default("")
+  twilioAccountSid         String?  @default("")
+  twilioAuthToken          String?  @default("")
+  awsAccessKey             String?  @default("")
+  awsSecretKey             String?  @default("")
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@map("Settings")
+}
+
+/// A group of addon options (e.g., "Size", "Spice Level", "Drinks")
+model AddonGroup {
+  id             String          @id @default(cuid())
+  restaurantId   String
+  name           String
+  displayName    String?
+  selectionType  SelectionType   @default(SINGLE)
+  isRequired     Boolean         @default(false)
+  minSelections  Int             @default(0)
+  maxSelections  Int?
+  sortOrder      Int             @default(0)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  restaurant     Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  options        AddonOption[]
+  menuItemAddons MenuItemAddon[]
+
+  @@index([restaurantId])
+  @@index([restaurantId, sortOrder])
+}
+
+/// An individual option within an addon group (e.g., "Small — $0", "Large — +$3")
+model AddonOption {
+  id              String     @id @default(cuid())
+  addonGroupId    String
+  name            String
+  priceAdjustment Float      @default(0)
+  isDefault       Boolean    @default(false)
+  sortOrder       Int        @default(0)
+  isActive        Boolean    @default(true)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  addonGroup      AddonGroup @relation(fields: [addonGroupId], references: [id], onDelete: Cascade)
+
+  @@index([addonGroupId])
+  @@index([addonGroupId, sortOrder])
+}
+
+/// Junction table: which addon groups apply to which menu items
+model MenuItemAddon {
+  id           String     @id @default(cuid())
+  menuItemId   String
+  addonGroupId String
+  sortOrder    Int        @default(0)
+  createdAt    DateTime   @default(now())
+  addonGroup   AddonGroup @relation(fields: [addonGroupId], references: [id], onDelete: Cascade)
+  menuItem     MenuItem   @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@unique([menuItemId, addonGroupId])
+  @@index([menuItemId])
+  @@index([addonGroupId])
+}
+
+model DeliverySlot {
+  id            String     @id @default(cuid())
+  restaurantId  String
+  startTime     String
+  endTime       String
+  maxOrders     Int        @default(20)
+  currentOrders Int        @default(0)
+  isAvailable   Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  dayOfWeek     Int
+  Restaurant    Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, dayOfWeek, startTime])
+  @@index([restaurantId, dayOfWeek])
+}
+
+model ProductCategory {
+  id                    String            @id
+  restaurantId          String
+  name                  String
+  slug                  String
+  parentId              String?
+  image                 String?
+  sortOrder             Int               @default(0)
+  isActive              Boolean           @default(true)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime
+  MenuItem              MenuItem[]
+  ProductCategory       ProductCategory?  @relation("ProductCategoryToProductCategory", fields: [parentId], references: [id])
+  other_ProductCategory ProductCategory[] @relation("ProductCategoryToProductCategory")
+  Restaurant            Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, slug])
+  @@index([parentId])
+  @@index([restaurantId])
+}
+
 enum UserRole {
   CUSTOMER
   DRIVER
   VENDOR
   ADMIN
   SUPER_ADMIN
+  POS_CASHIER
+  POS_MANAGER
 }
 
 enum ApprovalStatus {
@@ -22,179 +503,35 @@ enum ApprovalStatus {
   REJECTED
 }
 
-model User {
-  id             String         @id @default(cuid())
-  email          String         @unique
-  name           String?
-  phoneNumber    String?        @unique
-  dob            DateTime?  // User's Date of Birth
-  role           UserRole       @default(CUSTOMER)
-  approvalStatus ApprovalStatus? // For DRIVER and VENDOR roles
-  addresses      Address[]
-  orders         Order[]
-  driver         Driver?
-  vendorProfile  VendorProfile?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+enum SpicyLevel {
+  MILD
+  MEDIUM
+  HOT
 }
 
-model VendorProfile {
-  id           String       @id @default(cuid())
-  userId       String       @unique
-  user         User         @relation(fields: [userId], references: [id])
-  businessName String
-  restaurants  Restaurant[]
-  documents    Json?
-  approvedAt   DateTime?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+enum SelectionType {
+  SINGLE
+  MULTIPLE
 }
 
-model Address {
-  id            String    @id @default(cuid())
-  userId        String
-  label         String    @default("Home")
-  streetAddress String
-  city          String
-  state         String
-  zipCode       String
-  phoneNumber   String
-  latitude      Float?
-  longitude     Float?
-  isDefault     Boolean   @default(false)
-  user          User      @relation(fields: [userId], references: [id])
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  @@index([userId])
+enum PricingType {
+  FIXED
+  PER_UNIT
+  WEIGHTED
 }
 
-model Restaurant {
-  id           String        @id @default(cuid())
-  name         String
-  chainName    String
-  address      String
-  latitude     Float
-  longitude    Float
-  cuisineType  String
-  segment      String
-  city         String
-  area         String
-  rating       Float?
-  coverImage   String?
-  deliveryTime String?
-  minimumOrder String?
-  spottedDate  DateTime?
-  closedDate   DateTime?
-  menuItems    MenuItem[]
-  orders       Order[]
-  vendorId     String
-  vendor       VendorProfile @relation(fields: [vendorId], references: [id])
-  isActive     Boolean       @default(true)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-
-  @@index([vendorId])
-}
-
-model MenuItem {
-  id           String      @id @default(cuid())
-  label        String
-  description  String?
-  price        Float
-  image        String?
-  category     String
-  restaurantId String
-  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade) 
-  orderItems   OrderItem[]
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-}
-
-model Driver {
-  id            String           @id @default(cuid())
-  userId        String           @unique
-  user          User             @relation(fields: [userId], references: [id])
-  status        String           @default("OFFLINE")
-  currentLat    Float?
-  currentLng    Float?
-  lastLocation  DateTime?
-  activeOrder   Order?           @relation("ActiveDelivery", fields: [activeOrderId], references: [id])
-  activeOrderId String?         @unique
-  orders        Order[]          @relation("DriverOrders")
-  locations     DriverLocation[]
-  stats         DriverStats?
-  rating        Float?
-  totalOrders   Int              @default(0)
-  vehicleType   String
-  documents     Json?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-}
-
-model DriverLocation {
-  id        String   @id @default(cuid())
-  driverId  String
-  driver    Driver   @relation(fields: [driverId], references: [id])
-  lat       Float
-  lng       Float
-  timestamp DateTime @default(now())
-
-  @@index([driverId, timestamp])
-}
-
-model DriverStats {
-  id              String    @id @default(cuid())
-  driverId        String    @unique
-  driver          Driver    @relation(fields: [driverId], references: [id])
-  totalDeliveries Int       @default(0)
-  totalEarnings   Float     @default(0)
-  averageRating   Float?
-  completionRate  Float     @default(0)
-  lastPayout      DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-}
-
-model Order {
-  id              String      @id @default(cuid())
-  userId          String
-  user            User        @relation(fields: [userId], references: [id])
-  restaurantId    String
-  restaurant      Restaurant  @relation(fields: [restaurantId], references: [id])
-  status          String      @default("PENDING")
-  specialInstructions String? 
-  paymentMethod    String       @default("cod")
-  totalAmount     Float        
-  deliveryAddress String
-  orderItems      OrderItem[]
-  driverId        String?
-  driver          Driver?     @relation("DriverOrders", fields: [driverId], references: [id])
-  assignedDriver  Driver?     @relation("ActiveDelivery")
-  pickupLat       Float?
-  pickupLng       Float?
-  dropoffLat      Float?
-  dropoffLng      Float?
-  assignedAt      DateTime?
-  pickedUpAt      DateTime?
-  deliveredAt     DateTime?
-  estimatedTime   Int?
-  actualTime      Int?
-  driverRating    Int?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-}
-
-model OrderItem {
-  id         String   @id @default(cuid())
-  orderId    String
-  order      Order    @relation(fields: [orderId], references: [id])
-  menuItemId String
-  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
-  quantity   Int
-  options    Json?
-  price      Float
-  name       String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+enum StoreType {
+  RESTAURANT
+  GROCERY
+  FLOWER_SHOP
+  PHARMACY
+  BAKERY
+  GENERAL
+  ADULTS_ONLY
+  APPAREL
+  BEAUTY_CARE
+  ELECTRONICS
+  HEALTH_WELLBEING
+  HOME_DIY
+  STATIONERY
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -11,47 +11,74 @@ import {
   Dimensions,
   ActivityIndicator,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Colors as BrandColors } from "../constants/Colors";
+import { styles } from "./SearchScreen.styles";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { formatPrice } from "../utils/currency";
 import {
   searchRestaurants,
   searchMenuItems,
   getRestaurants,
   getRestaurantsByFilters,
 } from "../lib/supabase";
-import { useCart } from "../hooks/useCart";
+import { useSettings } from "../hooks/useSettings";
+import { useCart, getCartItemKey } from "../hooks/useCart";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { useNavigation } from "@react-navigation/native";
 import { useLocation } from "../hooks/useLocation";
 import { getDistance } from "../utils/geo";
 import { supabase } from "../lib/supabase";
+import { useDebounce } from "../hooks/useDebounce";
+import { useTranslation } from "react-i18next";
+import QuantitySelector from "../components/QuantitySelector";
+import ProductDetailModal from "../components/ProductDetailModal";
+import Preloader from "../components/Preloader";
 
 const { width } = Dimensions.get("window");
 
-export const SearchScreen = ({ navigation }: { navigation: any }) => {
+export const SearchScreen = ({ navigation, route }: { navigation: any, route: any }) => {
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 500); // 500ms debounce
   const [restaurants, setRestaurants] = useState<any[]>([]);
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
-  const { addToCart } = useCart();
+  const { cartItems, addToCart, removeFromCart, findLatestItemByProductId } = useCart();
+  const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
+  const searchInputRef = useRef<TextInput>(null);
+
+  // Auto-focus search input when navigated from HomeScreen
+  useEffect(() => {
+    if (route?.params?.fromHome) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 350);
+      navigation.setParams({ fromHome: undefined });
+    }
+  }, [route?.params?.fromHome]);
 
   const [cuisineTypes, setCuisineTypes] = useState<string[]>([]);
-  const [cuisineTypesLoading, setCuisineTypesLoading] = useState(false); // New loading state for cuisines
-  const [selectedCuisine, setSelectedCuisine] = useState<string | null>(null);
-  const [cuisineRestaurants, setCuisineRestaurants] = useState<any[]>([]);
+  const [cuisineTypesLoading, setCuisineTypesLoading] = useState(false);
+  const [cuisineItemsMap, setCuisineItemsMap] = useState<{ [key: string]: any[] }>({});
   const [cuisineLoading, setCuisineLoading] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [popularProducts, setPopularProducts] = useState<any[]>([]);
+  const [popularProductsLoading, setPopularProductsLoading] = useState(false);
 
   const scrollY = new Animated.Value(0);
 
   // --- Location & Default Address State ---
   const { currentLocation, fetchLocation, coords } = useLocation();
+  const { deliveryRadius } = useSettings();
   const [defaultAddressCoords, setDefaultAddressCoords] = useState<{
     latitude: number;
     longitude: number;
   } | null>(null);
-  const effectiveCoords = coords || defaultAddressCoords;
+  const effectiveCoords = useMemo(() => coords || defaultAddressCoords, [coords, defaultAddressCoords]);
   //---------------------------------------------
 
   useEffect(() => {
@@ -59,9 +86,9 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
   }, [fetchLocation]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        fetchDefaultAddress(session.user.id);
+    supabase.auth.getSession().then(({ data }) => {
+      if (data?.session) {
+        fetchDefaultAddress(data.session.user.id);
       }
     });
   }, []);
@@ -94,6 +121,34 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
     }
   };
 
+
+  const handleModalAddToCart = (menuItem: any, quantity: number, selectedOptions: any[]) => {
+    // We already have restaurant details from the product object in Search.
+    const restaurant = menuItem.Restaurant || { 
+      id: menuItem.restaurantId,
+      name: menuItem.restaurantName || t('restaurant.restaurant_fallback'),
+      currency: menuItem.restaurantCurrency || t('common.currency_default'),
+      deliveryCharges: menuItem.Restaurant?.deliveryCharges || Number(t('common.delivery_fee_default'))
+    };
+
+    addToCart({
+      id: menuItem.id,
+      restaurantId: restaurant.id,
+      restaurantName: restaurant.name,
+      restaurantCurrency: restaurant.currency,
+      name: menuItem.label || menuItem.name,
+      price: menuItem.price,
+      quantity: quantity,
+      image: menuItem.image,
+      deliveryCharges: restaurant.deliveryCharges,
+      selectedOptions: selectedOptions
+    });
+
+    setIsModalVisible(false);
+    // Removed auto-navigation to Cart as per user request to stay on the page
+  };
+
+
   const handleSearchSubmit = () => {
     if (searchQuery.trim()) {
       addToRecentSearches(searchQuery);
@@ -104,20 +159,23 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
   useEffect(() => {
     let isActive = true;
     const fetchResults = async () => {
-      if (searchQuery.trim().length >= 1) {
+      if (debouncedSearchQuery.trim().length >= 1) {
         setLoading(true);
         try {
           if (effectiveCoords) {
+            const effectiveRadius = deliveryRadius || 50;
             const [restaurantResults, menuItemResults] = await Promise.all([
               searchRestaurants(
-                searchQuery,
+                debouncedSearchQuery,
                 effectiveCoords.latitude,
-                effectiveCoords.longitude
+                effectiveCoords.longitude,
+                effectiveRadius
               ),
               searchMenuItems(
-                searchQuery,
+                debouncedSearchQuery,
                 effectiveCoords.latitude,
-                effectiveCoords.longitude
+                effectiveCoords.longitude,
+                effectiveRadius
               ),
             ]);
             if (isActive) {
@@ -125,8 +183,15 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
               setMenuItems(menuItemResults);
             }
           } else {
-            setRestaurants([]);
-            setMenuItems([]);
+            // No coordinates yet — search without location filter
+            const [restaurantResults, menuItemResults] = await Promise.all([
+              searchRestaurants(debouncedSearchQuery, 0, 0, 99999),
+              searchMenuItems(debouncedSearchQuery, 0, 0, 99999),
+            ]);
+            if (isActive) {
+              setRestaurants(restaurantResults);
+              setMenuItems(menuItemResults);
+            }
           }
         } catch (error) {
           console.error(error);
@@ -144,99 +209,145 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
     return () => {
       isActive = false;
     };
-  }, [searchQuery, effectiveCoords]);
+  }, [debouncedSearchQuery, effectiveCoords?.latitude, effectiveCoords?.longitude, deliveryRadius]);
 
-  // Fetch popular cuisines only from nearby restaurants.
-  // Fetch popular cuisines only from nearby restaurants.
+  // Fetch popular cuisines — runs with or without location, falls back to all restaurants
   useEffect(() => {
     if (!effectiveCoords) return; // Wait for effectiveCoords to be available
     const fetchCuisineTypes = async () => {
       setCuisineTypesLoading(true);
+      setCuisineLoading(true);
       try {
         const allRestaurants = await getRestaurants();
-        const filteredRestaurants = allRestaurants.filter((r: any) => {
-          const distance = getDistance(
-            effectiveCoords.latitude,
-            effectiveCoords.longitude,
-            r.latitude,
-            r.longitude
-          );
-          return distance <= 10;
-        });
+        let effectiveRestaurants = allRestaurants;
+
+        if (effectiveCoords) {
+          const effectiveRadius = deliveryRadius || 50;
+          const filteredRestaurants = allRestaurants.filter((r: any) => {
+            try {
+              const distance = getDistance(
+                effectiveCoords.latitude,
+                effectiveCoords.longitude,
+                r.latitude,
+                r.longitude
+              );
+              return distance <= effectiveRadius;
+            } catch { return false; }
+          });
+          effectiveRestaurants = filteredRestaurants.length > 0 ? filteredRestaurants : allRestaurants;
+        }
+
         const cuisines = Array.from(
-          new Set(filteredRestaurants.map((r: any) => r.cuisineType))
-        );
+          new Set(effectiveRestaurants.map((r: any) => r.cuisineType))
+        ).filter(c => !!c && typeof c === 'string' && c.trim().length > 0);
         setCuisineTypes(cuisines);
+
+        // Fetch menu items for each cuisine
+        const itemsMap: { [key: string]: any[] } = {};
+        for (const cuisine of cuisines) {
+          const restaurants = effectiveRestaurants.filter(r => r.cuisineType === cuisine);
+          let allItems: any[] = [];
+          
+          restaurants.forEach(r => {
+            const items = r.MenuItem || r.menuItems;
+            if (items) {
+              const itemsWithRestaurant = items.map((item: any) => ({
+                ...item,
+                Restaurant: {
+                  id: r.id,
+                  name: r.name,
+                  currency: r.currency || t('common.currency_default'),
+                  deliveryCharges: r.deliveryCharges ?? Number(t('common.delivery_fee_default'))
+                }
+              }));
+              allItems = [...allItems, ...itemsWithRestaurant];
+            }
+          });
+
+          // Filter items whose label or category actually matches the cuisine
+          const cuisineLower = cuisine.toLowerCase();
+          const relevantItems = allItems.filter((item: any) => {
+            const label = (item.label || '').toLowerCase();
+            const category = (item.category || '').toLowerCase();
+            return label.includes(cuisineLower) || category.includes(cuisineLower) || cuisineLower.includes(label.split(' ').pop() || '');
+          });
+
+          // Use relevant items if found, otherwise fall back to all items from cuisine restaurants
+          const sourceItems = relevantItems.length > 0 ? relevantItems : allItems;
+          const shuffled = sourceItems.sort(() => 0.5 - Math.random()).slice(0, 8);
+          itemsMap[cuisine] = shuffled;
+        }
+        setCuisineItemsMap(itemsMap);
+
+        // EXTRA: Collect some popular products from across all nearby restaurants for the "Initial Load"
+        const topProducts = effectiveRestaurants.flatMap(r => {
+          const items = r.MenuItem || r.menuItems || [];
+          return items.slice(0, 2).map((item: any) => ({
+            ...item,
+            Restaurant: {
+              id: r.id,
+              name: r.name,
+              currency: r.currency || t('common.currency_default'),
+              deliveryCharges: r.deliveryCharges ?? Number(t('common.delivery_fee_default'))
+            }
+          }));
+        }).sort(() => 0.5 - Math.random()).slice(0, 10);
+        
+        setPopularProducts(topProducts);
+
       } catch (error) {
         console.error("Error fetching cuisines: ", error);
       } finally {
         setCuisineTypesLoading(false);
+        setCuisineLoading(false);
+        setPopularProductsLoading(false);
       }
     };
     fetchCuisineTypes();
-  }, [effectiveCoords]);
-
-  // Fetch restaurants for the selected cuisine.
-  useEffect(() => {
-    if (selectedCuisine && effectiveCoords) {
-      setCuisineLoading(true);
-      getRestaurantsByFilters({ cuisineType: selectedCuisine })
-        .then((filtered) => {
-          const nearby = filtered.filter((r: any) => {
-            const distance = getDistance(
-              effectiveCoords.latitude,
-              effectiveCoords.longitude,
-              r.latitude,
-              r.longitude
-            );
-            return distance <= 10;
-          });
-          setCuisineRestaurants(nearby);
-          setCuisineLoading(false);
-        })
-        .catch((error) => {
-          console.error("Error fetching restaurants for cuisine: ", error);
-          setCuisineLoading(false);
-        });
-    } else {
-      setCuisineRestaurants([]);
-    }
-  }, [selectedCuisine, effectiveCoords]);
-
-  const handleCuisinePress = (cuisine: string) => {
-    if (selectedCuisine === cuisine) {
-      setSelectedCuisine(null);
-    } else {
-      setSelectedCuisine(cuisine);
-    }
-  };
+  }, [effectiveCoords?.latitude, effectiveCoords?.longitude, deliveryRadius]);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Animated.View style={[styles.header, { height: 200 }]}>
+    <View style={styles.container}>
+      <Animated.View style={[styles.header, { height: 210 + insets.top, paddingTop: insets.top + 25 }]}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: BrandColors.primary }]} />
         <LinearGradient
-          colors={["#FF6B6B", "#FF8E53"]}
+          colors={['rgba(255,255,255,0.2)', 'rgba(255,255,255,0)']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
-        <BlurView intensity={20} style={StyleSheet.absoluteFill} />
-        <Text style={styles.title}>Craving something delicious?</Text>
+        <View style={styles.brandHeaderContent}>
+          <View style={styles.brandTextContainer}>
+            <Text style={styles.brandGreeting}>{t('greeting.morning')} 👋</Text>
+            <Text style={styles.title}>{t('search.title')}</Text>
+          </View>
+          <View style={styles.brandIconContainer}>
+            <Ionicons name="storefront" size={26} color="#FFF" style={{ opacity: 0.95 }}/>
+          </View>
+        </View>
         <View style={styles.searchInputContainer}>
           <Ionicons
             name="search"
-            size={24}
-            color="#6B7280"
+            size={22}
+            color="#9CA3AF"
             style={styles.searchIcon}
           />
           <TextInput
+            ref={searchInputRef}
             style={styles.searchInput}
-            placeholder="Search for restaurants or dishes"
-            placeholderTextColor="#6B7280"
+            placeholder={t('search.placeholder')}
+            placeholderTextColor="#9CA3AF"
             value={searchQuery}
             onChangeText={setSearchQuery}
             onSubmitEditing={handleSearchSubmit}
+            underlineColorAndroid="transparent"
+            autoFocus={false}
           />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearIcon}>
+              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
         </View>
       </Animated.View>
 
@@ -247,57 +358,23 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
           { useNativeDriver: false }
         )}
         scrollEventThrottle={16}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 80 }]}
       >
         {loading ? (
-          <ActivityIndicator
-            size="large"
-            color="#FF6B6B"
-            style={styles.loader}
-          />
+          <View style={{ height: 200, justifyContent: 'center', alignItems: 'center' }}>
+            <Preloader fullScreen={false} size={80} />
+          </View>
         ) : (
           <>
-            {restaurants.length > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Restaurants</Text>
-                {restaurants.map((restaurant) => (
-                  <RestaurantCard
-                    key={restaurant.id}
-                    restaurant={restaurant}
-                    onPress={() => {
-                      addToRecentSearches(restaurant.name);
-                      navigation.navigate("RestaurantDetails", { restaurant });
-                    }}
-                  />
-                ))}
+            <View style={[styles.section, recentSearches.length === 0 && styles.sectionEmpty]}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleContainer}>
+                  <View style={styles.sectionAccent} />
+                  <Text style={styles.sectionTitle} numberOfLines={1} ellipsizeMode="tail">
+                    {t('search.recent_searches')}
+                  </Text>
+                </View>
               </View>
-            )}
-
-            {menuItems.length > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Menu Items</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {menuItems.map((item) => (
-                    <MenuItemCard
-                      key={item.id}
-                      item={item}
-                      onPress={() => {
-                        addToRecentSearches(item.label);
-                        navigation.navigate("RestaurantDetails", {
-                          restaurant: item.Restaurant || {
-                            id: item.restaurantId,
-                          },
-                          selectedMenuItem: item,
-                        });
-                      }}
-                    />
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Recent Searches</Text>
               {recentSearches.length > 0 ? (
                 <View style={styles.recentSearches}>
                   {recentSearches.map((search, index) => (
@@ -305,79 +382,182 @@ export const SearchScreen = ({ navigation }: { navigation: any }) => {
                       key={index}
                       style={styles.recentSearchItem}
                       onPress={() => setSearchQuery(search)}
+                      activeOpacity={0.7}
                     >
+                      <Ionicons name="time-outline" size={16} color="#6B7280" style={{ marginRight: 4 }} />
                       <Text style={styles.recentSearchText}>{search}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               ) : (
                 <Text style={styles.noRecentSearches}>
-                  Fresh start. Find something tasty!
+                  {t('search.fresh_start')}
                 </Text>
               )}
             </View>
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Popular Cuisines</Text>
-              {!effectiveCoords || cuisineTypesLoading ? (
-                <ActivityIndicator
-                  size="small"
-                  color="#FF6B2B"
-                  style={styles.loader}
-                />
-              ) : cuisineTypes.length === 0 ? (
-                <Text style={styles.noCuisinesText}>
-                  No cuisines available in your area
-                </Text>
-              ) : (
-                cuisineTypes.map((cuisine) => (
-                  <View key={cuisine}>
-                    <TouchableOpacity
-                      style={styles.cuisineItem}
-                      onPress={() => handleCuisinePress(cuisine)}
+            {/* Search Results Mode */}
+            {searchQuery.length > 0 ? (
+              <>
+                {restaurants.length > 0 && (
+                  <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                      <View style={styles.sectionTitleContainer}>
+                        <View style={styles.sectionAccent} />
+                        <Text style={styles.sectionTitle}>{t('search.restaurants')}</Text>
+                      </View>
+                    </View>
+                    <ScrollView 
+                      horizontal 
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.cuisineItemsScroll}
                     >
-                      <Text style={styles.cuisineName}>{cuisine}</Text>
-                      <Ionicons
-                        name={
-                          selectedCuisine === cuisine
-                            ? "chevron-up"
-                            : "chevron-down"
-                        }
-                        size={24}
-                        color="#6B7280"
-                      />
-                    </TouchableOpacity>
-                    {selectedCuisine === cuisine && (
-                      <View style={styles.cuisineDropdown}>
+                      {restaurants.map((restaurant: any) => (
+                        <RestaurantCard
+                          key={`${restaurant.id}-search`}
+                          restaurant={restaurant}
+                          onPress={() => {
+                            addToRecentSearches(restaurant.name);
+                            navigation.navigate("RestaurantDetails", { restaurant });
+                          }}
+                        />
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {menuItems.length > 0 && (
+                  <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                      <View style={styles.sectionTitleContainer}>
+                        <View style={styles.sectionAccent} />
+                        <Text style={styles.sectionTitle}>{t('search.menu_items')}</Text>
+                      </View>
+                    </View>
+                    <ScrollView 
+                      horizontal 
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.cuisineItemsScroll}
+                    >
+                      {menuItems.map((item: any) => (
+                        <MenuItemCard
+                          key={`${item.id}-search`}
+                          item={item}
+                          onPress={() => {
+                            addToRecentSearches(item.label);
+                            setSelectedProduct(item);
+                            setIsModalVisible(true);
+                          }}
+                        />
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {restaurants.length === 0 && menuItems.length === 0 && !loading && (
+                  <View style={styles.searchEmptyContainer}>
+                    <Ionicons name="search-outline" size={64} color="#E5E7EB" />
+                    <Text style={styles.searchEmptyText}>{t('search.no_results')}</Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              /* Discovery Mode (Empty Search State) */
+              <>
+                {/* Recommended Products Section */}
+                {popularProducts.length > 0 && (
+                  <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                      <View style={styles.sectionTitleContainer}>
+                        <View style={styles.sectionAccent} />
+                        <Text style={styles.sectionTitle}>{t('search.recommended_for_you')}</Text>
+                      </View>
+                    </View>
+                    <ScrollView 
+                      horizontal 
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.cuisineItemsScroll}
+                    >
+                      {popularProducts.map((item: any) => (
+                        <MenuItemCard
+                          key={`${item.id}-recommended`}
+                          item={item}
+                          onPress={() => {
+                            setSelectedProduct(item);
+                            setIsModalVisible(true);
+                          }}
+                        />
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* Popular Cuisines Section */}
+                <View style={styles.section}>
+                  <View style={styles.sectionHeader}>
+                    <View style={styles.sectionTitleContainer}>
+                      <View style={styles.sectionAccent} />
+                      <Text style={styles.sectionTitle}>{t('search.popular_cuisines')}</Text>
+                    </View>
+                  </View>
+                  {!effectiveCoords || cuisineTypesLoading ? (
+                    <View style={{ height: 150, justifyContent: 'center', alignItems: 'center' }}>
+                      <Preloader fullScreen={false} size={60} />
+                    </View>
+                  ) : cuisineTypes.length === 0 ? (
+                    <Text style={styles.noCuisinesText}>{t('search.no_cuisines')}</Text>
+                  ) : (
+                    cuisineTypes.map((cuisine: string) => (
+                      <View key={cuisine} style={styles.cuisineSection}>
+                        <Text style={styles.cuisineName}>{cuisine}</Text>
                         {cuisineLoading ? (
-                          <ActivityIndicator
-                            size="small"
-                            color="#FF6B2B"
-                            style={styles.loader}
-                          />
+                          <View style={{ height: 100, justifyContent: 'center', alignItems: 'center' }}>
+                            <Preloader fullScreen={false} size={50} />
+                          </View>
                         ) : (
-                          cuisineRestaurants.map((restaurant) => (
-                            <RestaurantCard
-                              key={restaurant.id}
-                              restaurant={restaurant}
-                              onPress={() =>
-                                navigation.navigate("RestaurantDetails", {
-                                  restaurant,
-                                })
-                              }
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={styles.cuisineItemsScroll}
+                        >
+                          {cuisineItemsMap[cuisine]?.map((item: any) => (
+                            <MenuItemCard
+                              key={`${item.id}-${item.restaurantId}`}
+                              item={item}
+                              onPress={() => {
+                                setSelectedProduct(item);
+                                setIsModalVisible(true);
+                              }}
                             />
-                          ))
+                          ))}
+                        </ScrollView>
                         )}
                       </View>
-                    )}
-                  </View>
-                ))
-              )}
-            </View>
+                    ))
+                  )}
+                </View>
+              </>
+            )}
           </>
         )}
       </Animated.ScrollView>
-    </SafeAreaView>
+
+      <ProductDetailModal
+        isVisible={isModalVisible}
+        onClose={() => setIsModalVisible(false)}
+        product={selectedProduct}
+        restaurant={selectedProduct?.Restaurant || { 
+          id: selectedProduct?.restaurantId,
+          name: selectedProduct?.restaurantName,
+          currency: selectedProduct?.restaurantCurrency || t('common.currency_default'),
+          deliveryTime: t('common.delivery_time_range_default'),
+          deliveryCharges: Number(t('common.delivery_fee_default'))
+        }}
+        onAddToCart={handleModalAddToCart}
+        initialQuantity={findLatestItemByProductId(selectedProduct?.id)?.quantity || 0}
+        initialSelectedOptions={findLatestItemByProductId(selectedProduct?.id)?.selectedOptions || []}
+      />
+    </View>
   );
 };
 
@@ -387,33 +567,49 @@ const RestaurantCard = ({
 }: {
   restaurant: any;
   onPress: () => void;
-}) => (
-  <TouchableOpacity style={styles.restaurantCard} onPress={onPress}>
-    <Image
-      source={{
-        uri: restaurant.coverImage || "https://via.placeholder.com/150",
-      }}
-      style={styles.restaurantImage}
-    />
-    <View style={styles.restaurantInfo}>
-      <Text style={styles.restaurantName}>{restaurant.name || ""}</Text>
-      <Text style={styles.restaurantCuisine}>
-        {restaurant.cuisineType || ""}
-      </Text>
-      <View style={styles.restaurantMeta}>
-        <View style={styles.ratingContainer}>
-          <Ionicons name="star" size={16} color="#FFD700" />
-          <Text style={styles.ratingText}>
-            {restaurant.rating ? restaurant.rating.toFixed(1) : ""}
+}) => {
+  const { t } = useTranslation();
+  return (
+    <TouchableOpacity style={styles.modernRestaurantCard} onPress={onPress} activeOpacity={0.9}>
+      <Image
+        source={{
+          uri: restaurant.coverImage || "https://via.placeholder.com/600",
+        }}
+        style={styles.modernRestaurantImage}
+        resizeMode="cover"
+      />
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.8)']}
+        style={styles.cardGradient}
+      />
+      <View style={styles.modernCardContent}>
+        <View style={styles.cardTopRow}>
+          <Text style={styles.modernRestaurantName} numberOfLines={1}>
+            {restaurant.name || ""}
           </Text>
+          <View style={styles.modernRatingBadge}>
+            <Ionicons name="star" size={14} color="#FFF" />
+            <Text style={styles.modernRatingText}>
+              {restaurant.rating ? restaurant.rating.toFixed(1) : "5.0"}
+            </Text>
+          </View>
         </View>
-        <Text style={styles.deliveryTime}>
-          {restaurant.deliveryTime ? `${restaurant.deliveryTime} min` : ""}
-        </Text>
+        
+        <View style={styles.cardBottomRow}>
+          <Text style={styles.modernRestaurantCuisine} numberOfLines={1}>
+            {restaurant.cuisineType || t('restaurant.default_cuisine')}
+          </Text>
+          <View style={styles.modernDeliveryInfo}>
+            <Ionicons name="time-outline" size={14} color="#FFF" style={{ marginRight: 4 }} />
+            <Text style={styles.modernDeliveryText}>
+              {restaurant.deliveryTime ? `${restaurant.deliveryTime} ${t('common.min')}` : `${t('common.delivery_time_range_default')} ${t('common.min')}`}
+            </Text>
+          </View>
+        </View>
       </View>
-    </View>
-  </TouchableOpacity>
-);
+    </TouchableOpacity>
+  );
+};
 
 const MenuItemCard = ({
   item,
@@ -421,200 +617,61 @@ const MenuItemCard = ({
 }: {
   item: any;
   onPress: () => void;
-}) => (
-  <TouchableOpacity style={styles.menuItemCard} onPress={onPress}>
-    <Image
-      source={{ uri: item.image || "https://via.placeholder.com/150" }}
-      style={styles.menuItemImage}
-    />
-    <Text style={styles.menuItemName}>{item.label || ""}</Text>
-    <Text style={styles.menuItemPrice}>
-      {item.price ? `$${item.price.toFixed(2)}` : ""}
-    </Text>
-  </TouchableOpacity>
-);
+}) => {
+  const { t } = useTranslation();
+  const { cartItems, addToCart, removeFromCart, findLatestItemByProductId } = useCart();
+  const totalQuantity = cartItems.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-  header: {
-    justifyContent: "flex-end",
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    overflow: "hidden",
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#000",
-    marginBottom: 16,
-  },
-  searchInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgb(255, 255, 255)",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: "#000",
-  },
-  scrollContent: {
-    paddingTop: 16,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 16,
-    paddingHorizontal: 16,
-  },
-  recentSearches: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: 16,
-  },
-  recentSearchItem: {
-    backgroundColor: "#F3F4F6",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  recentSearchText: {
-    color: "#4B5563",
-    fontSize: 14,
-  },
-  noRecentSearches: {
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: "#6B7280",
-    fontStyle: "italic",
-    textAlign: "center",
-  },
-  cuisineItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  cuisineName: {
-    fontSize: 18,
-    color: "#1F2937",
-  },
-  cuisineDropdown: {
-    backgroundColor: "#F9FAFB",
-    paddingVertical: 8,
-  },
-  restaurantCard: {
-    flexDirection: "row",
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  restaurantImage: {
-    width: 100,
-    height: 100,
-    borderTopLeftRadius: 12,
-    borderBottomLeftRadius: 12,
-  },
-  restaurantInfo: {
-    flex: 1,
-    padding: 12,
-  },
-  restaurantName: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 4,
-  },
-  restaurantCuisine: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginBottom: 8,
-  },
-  restaurantMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  ratingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FEF3C7",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 8,
-  },
-  ratingText: {
-    marginLeft: 4,
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#D97706",
-  },
-  deliveryTime: {
-    fontSize: 14,
-    color: "#6B7280",
-  },
-  menuItemCard: {
-    width: 150,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    marginRight: 12,
-    padding: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  menuItemImage: {
-    width: "100%",
-    height: 100,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  menuItemName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 4,
-  },
-  menuItemPrice: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#FF6B6B",
-  },
-  loader: {
-    marginTop: 20,
-  },
-  noCuisinesText: {
-    fontSize: 16,
-    color: "#666",
-    textAlign: "center",
-    marginTop: 10,
-  },
-});
+  return (
+    <TouchableOpacity style={styles.menuItemCard} onPress={onPress} activeOpacity={0.9}>
+      <View style={styles.imageContainer}>
+        <Image
+          source={{ uri: item.image || "https://via.placeholder.com/150" }}
+          style={styles.menuItemImage}
+          resizeMode="cover"
+        />
+        <QuantitySelector
+          initialQuantity={totalQuantity}
+          onUpdate={(newQty) => {
+            const hasAddons = item.addonGroups && item.addonGroups.length > 0;
+            const requiresSelection = hasAddons && item.addonGroups.some((g: any) => g.isRequired && !g.options.some((o: any) => o.isDefault));
+
+            if (newQty > totalQuantity) {
+              if (requiresSelection || hasAddons) {
+                // Open modal if mandatory addons are missing defaults OR if it has addons at all
+                onPress();
+                return;
+              }
+
+              addToCart({
+                id: item.id,
+                restaurantId: item.restaurantId,
+                restaurantName: item.Restaurant?.name || '',
+                restaurantCurrency: item.Restaurant?.currency,
+                name: item.label,
+                price: item.price,
+                quantity: 1,
+                image: item.image,
+                deliveryCharges: item.Restaurant?.deliveryCharges ?? Number(t('common.delivery_fee_default'))
+              });
+            } else if (newQty < totalQuantity) {
+              removeFromCart(item.id);
+            }
+          }}
+          containerStyle={styles.menuItemQuantitySelector}
+          size="small"
+        />
+      </View>
+      <View style={styles.menuItemInfo}>
+        <Text style={styles.menuItemName} numberOfLines={2} ellipsizeMode="tail">
+          {item.label || ""}
+        </Text>
+        <Text style={styles.menuItemPrice}>
+          {item.price ? formatPrice(item.price, item.Restaurant?.currency) : ""}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+};
 
 export default SearchScreen;

@@ -1,124 +1,60 @@
+# Food Ordering App - Requirements
 
----
+## 1. Introduction
+This document outlines the functional and non-functional requirements for the Food Ordering App. The current implementation focuses on the **Customer** mobile application, with backend support for Drivers and Vendors.
 
-### **Fiestaa Food Delivery Requirements**  
+## 2. User Roles
+- **Customer:** End-users who browse restaurants, place orders, and track deliveries.
+- **Driver:** (Backend supported) Users who accept and deliver orders.
+- **Vendor:** (Backend supported) Restaurant owners who manage menus and orders.
+- **Admin:** (Backend supported) System administrators.
 
-**Date**: 26 Dec 2024  
-**Client**: Fiestaa Product Owner  
+## 3. Functional Requirements (Customer App)
 
----
+### 3.1 Authentication & User Profile
+- **Sign Up/Login:** Users can sign up and login using Email/Password or Google Sign-In.
+- **Profile Management:** Users can view and edit their profile (Name, Phone, DOB).
+- **Address Management:** Users can add, edit, and delete delivery addresses.
+- **Location Services:** Users can save locations with labels (Home, Work, etc.) and use current location.
 
-### **Project Overview**  
-- **Objective**: Connect customers and vendors on a single platform for food ordering and delivery.  
-- **Roles**:
-  - **Customer** (iOS/Android/Web): Browse vendor items, place orders, track delivery.
-  - **Driver** (iOS/Android): Receive, accept, and fulfill delivery requests.
-  - **Vendor** (Web/iOS/Android): Manage listings, accept orders.
-  - **Admin** (Dispatcher Panel - Web): Oversee drivers, allocate tasks, optimize routes.
-  - **Super Admin** (Web): Platform owner, manages users, transactions, and content.
+### 3.2 Discovery & Browsing
+- **Home Screen:** View featured restaurants, categories, and promotions.
+- **Search:** Search for restaurants and food items by name, cuisine, or category.
+- **Restaurant Listing:** View a list of restaurants with ratings, delivery time, and cuisine type.
+- **Restaurant Details:** View restaurant menu, info, and reviews.
 
-- **Existing Solution**: Adapted from ABC Technologies, includes custom branding (color scheme), no changes to design or workflow.
+### 3.3 Ordering Process
+- **Cart Management:** Add/remove items, update quantities, view total cost.
+- **Checkout:** Select delivery address, payment method, and place order.
+- **Payments:** Secure payment processing via Stripe (Credit/Debit cards) or Cash on Delivery (COD).
 
----
+### 3.4 Order Management
+- **Order History:** View a list of past and active orders.
+- **Order Details:** View detailed information about a specific order (Items, status, total).
+- **Order Tracking:** Real-time tracking of order status (Pending, Preparing, Out for Delivery, Delivered).
 
-### **Solution Workflow**  
-1. **Browsing & Selection**  
-   - Customer opens platform, browses vendor menus, selects items, customizes, adds to cart.  
+## 4. Non-Functional Requirements
 
-2. **Checkout**  
-   - Customer reviews order, inputs delivery details, selects payment method (credit, digital wallet, COD), confirms order.  
+### 4.1 Performance
+- App should load the home screen within 2 seconds.
+- Smooth scrolling and transitions (60fps).
+- Real-time updates for order status should have minimal latency.
 
-3. **Order Routing**  
-   - Vendor receives real-time notification; prepares and updates order status for tracking.
+### 4.2 Security
+- Secure storage of user credentials and tokens.
+- Data encryption in transit (HTTPS/SSL).
+- Secure payment processing (PCI-DSS compliance via Stripe).
 
-4. **Delivery Partner Assignment**  
-   - System auto-assigns a nearby driver based on location/availability; notifies driver upon order readiness.
+### 4.3 Reliability
+- App should handle network errors gracefully (offline mode/indicators).
+- Data consistency across devices.
 
-5. **Order Pickup**  
-   - Driver picks up order, customer receives real-time updates on status.
+### 4.4 Scalability
+- Backend should support concurrent users and orders.
+- Database designed to handle growing data (Users, Orders, Restaurants).
 
-6. **Delivery**  
-   - Driver transports order, live-tracked by customer, completes handover.
-
-7. **Completion & Feedback**  
-   - Customer rates experience; system finalizes payment settlement and records order completion.
-
----
-
-### **Core Features**  
-
-- **Customer App**  
-   - **Product Browsing**: Restaurant categories, notifications, dine-in booking.
-   - **Cart**: Add/edit/clear items, one-click reorder, persistent cart.
-   - **Order History**: View past orders.
-   - **Checkout**: Shipping address, location selection.
-   - **Payment**: Credit cards, digital wallets, COD.
-   - **Delivery Tracking**: Estimated arrival, real-time map tracking, driver info.
-   - **Chat**: Real-time, multimedia support.
-   - **Localization**: Multi-language, RTL layout.
-   - **UI Modes**: Dark mode.
-   - **Geolocation**: Map SDK (Google Maps/MapBox).
-   - **Ratings & Reviews**: Feedback for vendors/drivers.
-   - **Search**: Restaurant and dish search.
-   - **Profile**: Manage account settings.
-   - **Login/Registration**: Facebook, email/password, SMS OTP, persistent login.
-
-- **Driver App**  
-   - **Availability Toggle**: Go online/offline.
-   - **Order Management**: Accept/reject orders, view directions.
-   - **History**: View completed deliveries.
-   - **Notifications**: Order updates.
-   - **Chat**: Real-time, multimedia support with customers.
-   - **Profile**: Manage details.
-   - **Login/Registration**: Facebook, email/password, SMS OTP, persistent login.
-
-- **Vendor Admin** (Web, iOS, Android)  
-   - **Order Management**: Accept/reject, view order history.
-   - **Notifications**: New orders.
-   - **Product Management**: Add/edit/delete items.
-   - **Profile**: Manage account settings.
-   - **Login/Registration**: Facebook, email/password, SMS OTP, persistent login.
-
-- **Web Admin Panel**  
-   - **User/Order Management**: Track users and orders.
-   - **Coupons**: Create/manage promotional offers.
-   - **Driver Management**: Track/manage drivers.
-   - **Payment Management**: Handle payments and restaurant payouts.
-   - **Settings**: Configure notifications, social logins, currencies.
-
----
-
-### **Technical Solution**  
-
-#### **Backend**
-   - **Supabase** as backend for data synchronization, authentication, and storage.
-   - **Security Rules**: Role-based access controls for all user roles.
-   - **Real-Time Updates**: Enabled for order tracking, driver location, and chat.
-   - **Offline Sync**: Core features, e.g., order status updates, persist in low connectivity.
-
-#### **Geolocation**  
-   - SDK Choice: Developer can choose **Google Maps** or **Mapbox** based on budget and performance needs.
-   - **Driver Tracking**: Real-time tracking with route optimization.
-
-#### **Authentication**  
-   - **Supabase Auth** with multi-login options: Facebook, SMS, email/password.
-   - **Session Management**: Persistent login for user convenience.
-
-#### **Payments**  
-   - **Gateway**: Stripe for card/digital payments; COD support.
-   - **Settlement**: Supabase tracks order status and payouts.
-
-#### **Notifications and Chat**  
-   - **Push Notifications**: Supabase Cloud Messaging for updates.
-   - **Chat**: Firestore supports real-time messaging, with multimedia via Supabase Storage.
-
-#### **Localization**  
-   - **Multi-language**: Supabase collection for language preferences, RTL layout support.
-
-#### **Admin and Reporting**  
-   - **Admin Panels**: Dispatcher for delivery allocation; Super Admin for user metrics, reports.
-   - **Analytics**: Supabase Analytics for usage data, Crashlytics for error monitoring.
-
----
-
-This streamlined spec provides developers with essential guidance, flexible SDK choices, and a Supabase-driven backend to meet Fiestaa’s needs efficiently and securely.
+## 5. Future Scope (Roadmap)
+- **Driver App:** Interface for drivers to accept/reject orders and navigate.
+- **Vendor Portal:** Web/Mobile app for restaurants to manage menu and orders.
+- **Chat Support:** In-app chat between Customer, Driver, and Support.
+- **Loyalty Program:** Points and rewards system.

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   TextInput,
   TouchableOpacity,
   Alert,
@@ -12,11 +11,15 @@ import {
   Modal,
   Pressable,
 } from "react-native";
+import { styles } from "./ProfileSetupModal.styles";
 import { supabase } from "../lib/supabase";
 import { Calendar, ChevronDown, MapPin, Phone, User } from "lucide-react-native";
 import cuid from "cuid";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useLocation } from "../hooks/useLocation"; // Added location hook
+import { useTranslation } from "react-i18next";
+import { Colors as BrandColors } from "../constants/Colors";
+import { PRESET_ADDRESSES } from "../constants/Addresses";
 
 interface ProfileSetupModalProps {
   onProfileSetupSuccess: () => void;
@@ -63,9 +66,10 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
 
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
   const [activeSection, setActiveSection] = useState<"profile" | "address">("profile");
+  const { t, i18n } = useTranslation();
 
   // useLocation hook for fetching current location
-  const { fetchLocation, currentLocation, coords } = useLocation();
+  const { fetchLocation, currentLocation, coords, setManualLocation } = useLocation();
 
   useEffect(() => {
     fetchUserEmail();
@@ -92,7 +96,7 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
 
   // Format date for display
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString("en-US", {
+    return date.toLocaleDateString(i18n.language, {
       year: "numeric",
       month: "long",
       day: "numeric",
@@ -103,17 +107,17 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
   const validateProfileSection = (): ValidationErrors => {
     const errors: ValidationErrors = {};
     if (!name.trim()) {
-      errors.name = "Name is required.";
+      errors.name = t('profile_setup.error_name');
     }
     if (!phoneNumber.trim()) {
-      errors.phoneNumber = "Phone number is required.";
+      errors.phoneNumber = t('profile_setup.error_phone_req');
     } else if (!/^\d{10,11}$/.test(phoneNumber.trim())) {
-      errors.phoneNumber = "Phone number must be 10-11 digits.";
+      errors.phoneNumber = t('profile_setup.error_phone_format');
     }
     const today = new Date();
     const age = today.getFullYear() - dob.getFullYear();
     if (age < -1) {
-      errors.dob = "You must be at least 13 years old.";
+      errors.dob = t('profile_setup.error_age');
     }
     return errors;
   };
@@ -122,30 +126,47 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
   const validateAddressSection = (): ValidationErrors => {
     const errors: ValidationErrors = {};
     if (!addressLabel.trim()) {
-      errors.addressLabel = "Address label is required.";
+      errors.addressLabel = t('profile_setup.error_address_label');
     }
     if (!streetAddress.trim()) {
-      errors.streetAddress = "Street address is required.";
+      errors.streetAddress = t('profile_setup.error_street');
     }
     if (!city.trim()) {
-      errors.city = "City is required.";
+      errors.city = t('profile_setup.error_city');
     }
     if (!stateField.trim()) {
-      errors.state = "State is required.";
+      errors.state = t('profile_setup.error_state');
     } else if (!/^[A-Za-z\s]+$/.test(stateField.trim())) {
-      errors.state = "State must contain only letters and spaces.";
+      errors.state = t('profile_setup.error_state_format');
     }
     if (!zipCode.trim()) {
-      errors.zipCode = "Zip Code is required.";
+      errors.zipCode = t('profile_setup.error_zip');
     } else if (!/^\d{5}(-\d{4})?$/.test(zipCode.trim())) {
-      errors.zipCode = "Invalid zip code format.";
+      errors.zipCode = t('profile_setup.error_zip_format');
     }
     if (!addressPhoneNumber.trim()) {
-      errors.addressPhoneNumber = "Address phone number is required.";
+      errors.addressPhoneNumber = t('profile_setup.error_address_phone_req');
     } else if (!/^\d{10,11}$/.test(addressPhoneNumber.trim())) {
-      errors.addressPhoneNumber = "Address phone number must be 10-11 digits.";
+      errors.addressPhoneNumber = t('profile_setup.error_address_phone_format');
     }
     return errors;
+  };
+
+  const handleQuickSelect = (preset: any) => {
+    setAddressLabel(preset.label);
+    setStreetAddress(preset.streetAddress);
+    setCity(preset.city);
+    setStateField(preset.state);
+    setZipCode(preset.zipCode);
+    setLatitude(preset.latitude);
+    setLongitude(preset.longitude);
+    setManualMode(true); // Switch to manual mode so fields are visible/editable
+    setValidationErrors({});
+  };
+ 
+  const handleSetAppLocation = (preset: any) => {
+    setManualLocation(preset.label, { latitude: preset.latitude, longitude: preset.longitude });
+    Alert.alert(t('common.success'), t('profile_setup.location_simulated', { location: preset.label }));
   };
 
   // When the address tab is active and auto mode is enabled, fetch current location.
@@ -155,7 +176,7 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
       fetchLocation()
         .catch((error) => {
           console.error("Location fetch error:", error);
-          Alert.alert("Error", "Failed to fetch current location");
+          Alert.alert(t('common.error'), t('save_location.error_fetch'));
         })
         .finally(() => {
           setLoadingLocation(false);
@@ -169,9 +190,7 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
       activeSection === "address" &&
       !manualMode &&
       currentLocation &&
-      coords &&
-      !currentLocation.includes("Error") &&
-      currentLocation !== "Fetching current location..."
+      coords
     ) {
       const parts = currentLocation.split(",");
       setStreetAddress(parts[0] ? parts[0].trim() : "");
@@ -216,19 +235,26 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
       if (!user) throw new Error("No user found");
 
       // Upsert the user profile.
-      const { error: userError } = await supabase.from("User").upsert({
+      const userPayload = {
         id: user.id,
         email: email,
         name: name,
         phoneNumber: phoneNumber,
         dob: dob.toISOString(),
         updatedAt: new Date().toISOString(),
-      });
-      if (userError) throw userError;
+      };
+
+      console.log("Upserting User:", userPayload);
+
+      const { error: userError } = await supabase.from("User").upsert(userPayload);
+
+      if (userError) {
+        console.error("User Upsert Error:", userError);
+        throw new Error(`User Update Failed: ${userError.message}`);
+      }
 
       // Insert the default address.
-      // When in manual mode, lat & long are stored as 0.
-      const { error: addressError } = await supabase.from("Address").insert({
+      const addressPayload = {
         id: cuid(),
         userId: user.id,
         label: addressLabel,
@@ -240,16 +266,24 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
         isDefault: true,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        latitude: manualMode ? 1 : latitude,
-        longitude: manualMode ? 1 : longitude,
-      });
-      if (addressError) throw addressError;
+        latitude: manualMode ? 1 : (latitude || 0),
+        longitude: manualMode ? 1 : (longitude || 0),
+      };
 
-      Alert.alert("Success", "Profile and address updated successfully");
+      console.log("Inserting Address:", addressPayload);
+
+      const { error: addressError } = await supabase.from("Address").insert(addressPayload);
+
+      if (addressError) {
+        console.error("Address Insert Error:", addressError);
+        throw new Error(`Address Insert Failed: ${addressError.message}`);
+      }
+
+      Alert.alert(t('common.success'), t('profile_setup.success_message'));
       onProfileSetupSuccess();
-    } catch (error) {
-      console.error("Error updating profile:", error);
-      Alert.alert("Error", "Failed to update profile. Please try again.");
+    } catch (error: any) {
+      console.error("Detailed Profile Update Error:", error);
+      Alert.alert(t('common.error'), error.message || t('profile_setup.error_update_failed'));
     } finally {
       setLoading(false);
     }
@@ -257,29 +291,31 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
 
   return (
 
-    
+
     <View style={styles.modalContainer}>
       <View style={styles.modalContent}>
-        <Text style={styles.title}>Complete Your Profile</Text>
+        <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">{t('profile_setup.title')}</Text>
 
         {/* Tab Navigation */}
         <View style={styles.tabContainer}>
           <TouchableOpacity
             style={[styles.tab, activeSection === "profile" && styles.activeTab]}
             onPress={() => setActiveSection("profile")}
+            activeOpacity={1}
           >
-            <User size={18} color={activeSection === "profile" ? "#FF4B2B" : "#666"} />
+            <User size={18} color={activeSection === "profile" ? BrandColors.primary : "#666"} />
             <Text style={[styles.tabText, activeSection === "profile" && styles.activeTabText]}>
-              Profile
+              {t('profile_setup.tab_profile')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, activeSection === "address" && styles.activeTab]}
             onPress={() => setActiveSection("address")}
+            activeOpacity={1}
           >
-            <MapPin size={18} color={activeSection === "address" ? "#FF4B2B" : "#666"} />
+            <MapPin size={18} color={activeSection === "address" ? BrandColors.primary : "#666"} />
             <Text style={[styles.tabText, activeSection === "address" && styles.activeTabText]}>
-              Address
+              {t('profile_setup.tab_address')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -289,35 +325,37 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
             <>
               {/* Profile Section */}
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Email</Text>
+                <Text style={styles.label}>{t('profile_setup.email')}</Text>
                 <View style={styles.inputWrapper}>
-                  <TextInput style={styles.input} value={email} editable={false} />
+                  <TextInput style={styles.input} value={email} editable={false} underlineColorAndroid="transparent" />
                 </View>
               </View>
 
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Full Name</Text>
+                <Text style={styles.label}>{t('profile_setup.full_name')}</Text>
                 <View style={styles.inputWrapper}>
                   <TextInput
                     style={styles.input}
                     value={name}
                     onChangeText={setName}
-                    placeholder="Enter your full name"
+                    placeholder={t('profile_setup.name_placeholder')}
+                    underlineColorAndroid="transparent"
                   />
                 </View>
                 {validationErrors.name && <Text style={styles.errorText}>{validationErrors.name}</Text>}
               </View>
 
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Phone Number</Text>
+                <Text style={styles.label}>{t('profile_setup.phone')}</Text>
                 <View style={styles.inputWrapper}>
                   <Phone size={18} color="#666" style={styles.inputIcon} />
                   <TextInput
                     style={styles.inputWithIcon}
                     value={phoneNumber}
                     onChangeText={setPhoneNumber}
-                    placeholder="Enter your phone number"
+                    placeholder={t('profile_setup.phone_placeholder')}
                     keyboardType="phone-pad"
+                    underlineColorAndroid="transparent"
                   />
                 </View>
                 {validationErrors.phoneNumber && (
@@ -326,8 +364,8 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
               </View>
 
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Date of Birth</Text>
-                <TouchableOpacity style={styles.datePickerButton} onPress={showDatepicker}>
+                <Text style={styles.label}>{t('profile_setup.dob')}</Text>
+                <TouchableOpacity style={styles.datePickerButton} onPress={showDatepicker} activeOpacity={1}>
                   <Calendar size={18} color="#666" style={styles.inputIcon} />
                   <Text style={styles.dateText}>{formatDate(dob)}</Text>
                   <ChevronDown size={18} color="#666" />
@@ -340,9 +378,9 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
                   <Pressable style={styles.datePickerModalOverlay} onPress={() => setShowDatePicker(false)}>
                     <View style={styles.datePickerContainer}>
                       <View style={styles.datePickerHeader}>
-                        <Text style={styles.datePickerTitle}>Select Date of Birth</Text>
-                        <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                          <Text style={styles.datePickerDoneBtn}>Done</Text>
+                        <Text style={styles.datePickerTitle}>{t('profile_setup.dob_select')}</Text>
+                        <TouchableOpacity onPress={() => setShowDatePicker(false)} activeOpacity={1}>
+                          <Text style={styles.datePickerDoneBtn}>{t('profile_setup.done')}</Text>
                         </TouchableOpacity>
                       </View>
                       <DateTimePicker
@@ -361,15 +399,32 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
             </>
           ) : (
             <>
+              {/* Quick Select Section */}
+              <Text style={styles.quickSelectHeader}>{t('profile_setup.quick_select')}</Text>
+              <View style={styles.quickSelectContainer}>
+                {PRESET_ADDRESSES.map((preset) => (
+                  <TouchableOpacity
+                    key={preset.id}
+                    style={styles.quickSelectChip}
+                    onPress={() => handleQuickSelect(preset)}
+                    onLongPress={() => handleSetAppLocation(preset)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.quickSelectChipText}>{preset.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+ 
               {/* Address Section */}
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Address Label</Text>
+                <Text style={styles.label}>{t('profile_setup.address_label')}</Text>
                 <View style={styles.inputWrapper}>
                   <TextInput
                     style={styles.input}
                     value={addressLabel}
                     onChangeText={setAddressLabel}
-                    placeholder="e.g., Home, Work"
+                    placeholder={t('profile_setup.address_label_placeholder')}
+                    underlineColorAndroid="transparent"
                   />
                 </View>
                 {validationErrors.addressLabel && (
@@ -378,29 +433,31 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
               </View>
 
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Zip Code</Text>
+                <Text style={styles.label}>{t('profile_setup.zip_code')}</Text>
                 <View style={styles.inputWrapper}>
                   <TextInput
                     style={styles.input}
                     value={zipCode}
                     onChangeText={setZipCode}
-                    placeholder="Enter zip code"
+                    placeholder={t('profile_setup.zip_code_placeholder')}
                     keyboardType="numeric"
+                    underlineColorAndroid="transparent"
                   />
                 </View>
                 {validationErrors.zipCode && <Text style={styles.errorText}>{validationErrors.zipCode}</Text>}
               </View>
 
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Address Phone Number</Text>
+                <Text style={styles.label}>{t('profile_setup.address_phone')}</Text>
                 <View style={styles.inputWrapper}>
                   <Phone size={18} color="#666" style={styles.inputIcon} />
                   <TextInput
                     style={styles.inputWithIcon}
                     value={addressPhoneNumber}
                     onChangeText={setAddressPhoneNumber}
-                    placeholder="Enter phone number"
+                    placeholder={t('profile_setup.address_phone_placeholder')}
                     keyboardType="phone-pad"
+                    underlineColorAndroid="transparent"
                   />
                 </View>
                 {validationErrors.addressPhoneNumber && (
@@ -410,27 +467,28 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
 
               {!manualMode ? (
                 <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Current Location</Text>
+                  <Text style={styles.label}>{t('profile_setup.current_location')}</Text>
                   {loadingLocation ? (
-                    <ActivityIndicator color="#FF4B2B" />
+                    <ActivityIndicator color={BrandColors.primary} />
                   ) : (
-                    <Text style={styles.locationText}>
+                    <Text style={styles.locationText} numberOfLines={2} ellipsizeMode="tail">
                       {streetAddress
                         ? `${streetAddress}, ${city}, ${stateField}`
-                        : "Unable to fetch location"}
+                        : t('save_location.location_not_available')}
                     </Text>
                   )}
                 </View>
               ) : (
                 <>
                   <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Street Address</Text>
+                    <Text style={styles.label}>{t('profile_setup.street')}</Text>
                     <View style={styles.inputWrapper}>
                       <TextInput
                         style={styles.input}
                         value={streetAddress}
                         onChangeText={setStreetAddress}
-                        placeholder="Enter street address"
+                        placeholder={t('profile_setup.street_placeholder')}
+                        underlineColorAndroid="transparent"
                       />
                     </View>
                     {validationErrors.streetAddress && (
@@ -438,25 +496,27 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
                     )}
                   </View>
                   <View style={styles.inputContainer}>
-                    <Text style={styles.label}>City</Text>
+                    <Text style={styles.label}>{t('profile_setup.city')}</Text>
                     <View style={styles.inputWrapper}>
                       <TextInput
                         style={styles.input}
                         value={city}
                         onChangeText={setCity}
-                        placeholder="Enter city"
+                        placeholder={t('profile_setup.city_placeholder')}
+                        underlineColorAndroid="transparent"
                       />
                     </View>
                     {validationErrors.city && <Text style={styles.errorText}>{validationErrors.city}</Text>}
                   </View>
                   <View style={styles.inputContainer}>
-                    <Text style={styles.label}>State</Text>
+                    <Text style={styles.label}>{t('profile_setup.state')}</Text>
                     <View style={styles.inputWrapper}>
                       <TextInput
                         style={styles.input}
                         value={stateField}
                         onChangeText={setStateField}
-                        placeholder="Enter state"
+                        placeholder={t('profile_setup.state_placeholder')}
+                        underlineColorAndroid="transparent"
                       />
                     </View>
                     {validationErrors.state && <Text style={styles.errorText}>{validationErrors.state}</Text>}
@@ -466,224 +526,35 @@ const ProfileSetupModal = ({ onProfileSetupSuccess }: ProfileSetupModalProps) =>
 
               <TouchableOpacity
                 onPress={() => setManualMode(!manualMode)}
+                activeOpacity={1}
                 style={styles.manualToggleButton}
               >
                 <Text style={styles.manualToggleButtonText}>
-                  {manualMode ? "Use current location" : "Can't fetch location? Enter manually"}
+                  {manualMode ? t('profile_setup.use_current_location') : t('profile_setup.enter_manually')}
                 </Text>
               </TouchableOpacity>
             </>
           )}
         </ScrollView>
 
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={loading}>
+        <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={loading} activeOpacity={1}>
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.saveButtonText}>
-              {activeSection === "profile" ? "Continue to Address" : "Complete Setup"}
+              {activeSection === "profile" ? t('profile_setup.continue_to_address') : t('profile_setup.complete_setup')}
             </Text>
           )}
         </TouchableOpacity>
 
         {activeSection === "profile" && (
-          <TouchableOpacity style={styles.skipButton} onPress={() => setActiveSection("address")}>
-            <Text style={styles.skipButtonText}>Skip to Address</Text>
+          <TouchableOpacity style={styles.skipButton} onPress={() => setActiveSection("address")} activeOpacity={1}>
+            <Text style={styles.skipButtonText}>{t('profile_setup.skip_to_address')}</Text>
           </TouchableOpacity>
         )}
       </View>
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  modalContainer: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    width: "90%",
-    maxWidth: 500,
-    backgroundColor: "#fff",
-    borderRadius: 15,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-    maxHeight: "90%",
-  },
-  scrollContainer: {
-    paddingBottom: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 20,
-    textAlign: "center",
-    color: "#333",
-  },
-  tabContainer: {
-    flexDirection: "row",
-    marginBottom: 20,
-    borderRadius: 10,
-    backgroundColor: "#f5f5f5",
-    padding: 5,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  activeTab: {
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  tabText: {
-    marginLeft: 5,
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#666",
-  },
-  activeTabText: {
-    color: "#FF4B2B",
-    fontWeight: "600",
-  },
-  inputContainer: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    marginBottom: 6,
-    color: "#333",
-    fontWeight: "500",
-  },
-  inputWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    backgroundColor: "#f9f9f9",
-  },
-  input: {
-    flex: 1,
-    padding: 12,
-    fontSize: 16,
-    color: "#333",
-  },
-  inputIcon: {
-    marginLeft: 12,
-  },
-  inputWithIcon: {
-    flex: 1,
-    padding: 12,
-    fontSize: 16,
-    color: "#333",
-    paddingLeft: 8,
-  },
-  datePickerButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: "#f9f9f9",
-  },
-  dateText: {
-    flex: 1,
-    fontSize: 16,
-    color: "#333",
-    marginLeft: 8,
-  },
-  datePickerModalOverlay: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
-  datePickerContainer: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 15,
-    borderTopRightRadius: 15,
-    padding: 20,
-  },
-  datePickerHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  datePickerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#333",
-  },
-  datePickerDoneBtn: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#FF4B2B",
-  },
-  datePicker: {
-    width: "100%",
-  },
-  rowContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  halfWidth: {
-    flex: 1,
-  },
-  saveButton: {
-    backgroundColor: "#FF4B2B",
-    padding: 15,
-    borderRadius: 8,
-    alignItems: "center",
-    marginTop: 10,
-  },
-  saveButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  skipButton: {
-    padding: 15,
-    alignItems: "center",
-  },
-  skipButtonText: {
-    color: "#666",
-    fontSize: 14,
-  },
-  errorText: {
-    color: "#FF3B30",
-    marginTop: 5,
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  manualToggleButton: {
-    marginTop: 10,
-    alignItems: "center",
-  },
-  manualToggleButtonText: {
-    color: "#FF4B2B",
-    textDecorationLine: "underline",
-  },
-  locationText: {
-    fontSize: 14,
-    color: "#333",
-    marginTop: 5,
-  },
-});
 
 export default ProfileSetupModal;

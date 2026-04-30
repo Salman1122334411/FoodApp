@@ -1,29 +1,48 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
   Linking,
-  Alert,
-  ActivityIndicator
+  Image,
+  ActivityIndicator,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { CircularProgress } from "../../components/CircularProgress";
+import { styles } from "./OrdersDetailScreen.styles";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../lib/supabase";
+import { useTranslation } from "react-i18next";
+import { formatPrice } from "../utils/currency";
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { getOrderById, getRestaurantByIdFromAPI } from "../lib/api";
+import { LinearGradient } from "expo-linear-gradient";
+import { Colors as BrandColors } from "../constants/Colors";
+import { sendLocalNotification } from "../lib/notifications";
+import { useRef } from "react";
 
 interface OrderItem {
   id: string;
   name: string;
   price: number;
   quantity: number;
-  // Include any other fields as needed (options, createdAt, updatedAt, etc.)
+  options?: string; // JSON string of AddonOption[]
 }
 
-interface Restaurant {
+interface RestaurantDetails {
   id: string;
   name: string;
+  currency?: string;
+  coverImage?: string;
+  cuisineType?: string;
+  rating?: number;
+  latitude?: number;
+  longitude?: number;
+  deliveryTime?: string;
+  preparationTime?: number;
+  deliveryCharges?: number;
+  taxRate?: number;
+  isTaxIncluded?: boolean;
 }
 
 export interface Order {
@@ -50,476 +69,375 @@ export interface Order {
   createdAt: string;
   updatedAt: string;
   orderItems?: OrderItem[];
-  restaurant?: Restaurant;
+  restaurant?: RestaurantDetails;
+  posOrder?: {
+    discountAmount: number;
+    taxAmount: number;
+    serviceCharge: number;
+  };
 }
 
-export function OrderDetailsScreen({
-  route,
-}: {
-  route: { params: { order: Order } };
-}) {
-  const { order } = route.params;
+type RootStackParamList = {
+  OrderDetails: { order: Order };
+};
 
-  // Initialize state with defaults for restaurant and orderItems
+type Props = NativeStackScreenProps<RootStackParamList, "OrderDetails">;
+
+export function OrderDetailsScreen({ route, navigation }: Props) {
+  const { order } = route.params;
+  const { t, i18n } = useTranslation();
+  const insets = useSafeAreaInsets();
+
   const [currentOrder, setCurrentOrder] = useState<Order>(() => ({
     ...order,
-    restaurant: order.restaurant || { id: "", name: "Restaurant" },
+    restaurant: order.restaurant || { id: "", name: t('orders.restaurant_fallback') },
     orderItems: order.orderItems || [],
   }));
 
-  // Loading and last-updated states
   const [loading, setLoading] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [restaurantDetails, setRestaurantDetails] = useState<RestaurantDetails | null>(null);
 
-  // Date formatting helper
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
+  // Calculate Arrival Time
+  const arrivalTimeString = useMemo(() => {
+    const createdAtDate = new Date(currentOrder.createdAt);
+    const estimatedMinutes = currentOrder.estimatedTime || 30;
+    const arrivalDate = new Date(createdAtDate.getTime() + estimatedMinutes * 60000);
+    
+    return arrivalDate.toLocaleTimeString(i18n.language, {
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
     });
-  };
+  }, [currentOrder.createdAt, currentOrder.estimatedTime, i18n.language]);
 
-  // Order progress steps
-  const steps = [
-    { status: "PENDING", label: "Order Placed", icon: "receipt-outline" },
-    { status: "CONFIRMED", label: "Order Confirmed", icon: "checkmark-circle-outline" },
-    { status: "PREPARING", label: "Preparing", icon: "restaurant-outline" },
-    { status: "OUT_FOR_DELIVERY", label: "Out for Delivery", icon: "bicycle-outline" },
-    { status: "DELIVERED", label: "Delivered", icon: "checkmark-done-circle-outline" },
+  // Status mapping for the vertical timeline
+  const trackingSteps = [
+    { 
+      status: "PENDING", 
+      title: t('orders.statuses.pending.label'), 
+      desc: t('orders.statuses.pending.bottom_subtitle'),
+      icon: "checkmark-circle" 
+    },
+    { 
+      status: "CONFIRMED", 
+      title: t('orders.statuses.confirmed.label'), 
+      desc: t('orders.statuses.confirmed.bottom_subtitle'),
+      icon: "thumbs-up" 
+    },
+    { 
+      status: "PREPARING", 
+      title: t('orders.statuses.preparing.label'), 
+      desc: t('orders.statuses.preparing.bottom_subtitle'),
+      icon: "restaurant" 
+    },
+    { 
+      status: "OUT_FOR_DELIVERY", 
+      title: t('orders.statuses.out_for_delivery.label'), 
+      desc: t('orders.statuses.out_for_delivery.bottom_subtitle'),
+      icon: "bicycle" 
+    },
+    { 
+      status: "DELIVERED", 
+      title: t('orders.statuses.delivered.label'), 
+      desc: t('orders.statuses.delivered.bottom_subtitle'),
+      icon: "home" 
+    },
   ];
 
-  const formatStatus = (status: string) =>
-    status
-      .split("_")
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(" ");
-
-  const getStatusColor = (status: Order["status"]) => {
-    switch (status) {
-      case "PENDING":
-        return "#FCD34D";
-      case "CONFIRMED":
-        return "#60A5FA";
-      case "PREPARING":
-        return "#818CF8";
-      case "OUT_FOR_DELIVERY":
-        return "#34D399";
-      case "DELIVERED":
-        return "#10B981";
-      case "CANCELLED":
-        return "#EF4444";
-      default:
-        return "#6B7280";
-    }
-  };
-
-  const currentStepIndex = steps.findIndex(
+  const currentStepIndex = trackingSteps.findIndex(
     (step) => step.status === currentOrder.status
   );
 
-  const computedProgress =
-    currentOrder.status === "CANCELLED"
-      ? 0
-      : currentStepIndex !== -1
-      ? Math.round((currentStepIndex / (steps.length - 1)) * 100)
-      : 0;
+  const getStatusIllustration = (status: Order["status"]) => {
+    switch (status) {
+      case "PENDING": return "receipt-outline";
+      case "CONFIRMED": return "checkmark-circle-outline";
+      case "PREPARING": return "restaurant-outline";
+      case "OUT_FOR_DELIVERY": return "bicycle-outline";
+      case "DELIVERED": return "home-outline";
+      case "CANCELLED": return "close-circle-outline";
+      default: return "help-circle-outline";
+    }
+  };
 
-  const progressColor =
-    currentOrder.status === "CANCELLED" ? "#FF0000" : "#4A90E2";
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [orderData, restData] = await Promise.all([
+        getOrderById(order.id),
+        getRestaurantByIdFromAPI(currentOrder.restaurantId)
+      ]);
 
-  const getStatusSteps = () =>
-    steps.map((step, index) => ({
-      ...step,
-      isCompleted: index < currentStepIndex,
-      isCurrent: index === currentStepIndex,
-    }));
+      if (orderData) {
+        setCurrentOrder(prev => ({
+          ...prev,
+          ...(orderData as any),
+          orderItems: (orderData.orderItems as any) || prev.orderItems || [],
+        }));
+      }
+      
+      if (restData) {
+        setRestaurantDetails(restData);
+      }
+    } catch (err) {
+      console.error("Error fetching data:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [order.id]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`order-details-${order.id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "Order", filter: `id=eq.${order.id}` },
+        (payload) => {
+          setCurrentOrder((prev) => ({
+            ...prev,
+            ...((payload.new as Order) || {}),
+            orderItems: (payload.new as Order)?.orderItems || prev.orderItems || [],
+          }));
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [order.id]);
+
+  // Trigger notification on status change
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    
+    if (currentOrder?.status) {
+      sendLocalNotification({
+        title: t(`orders.statuses.${currentOrder.status.toLowerCase()}.header_title`, { defaultValue: 'Order Update' }),
+        body: t(`orders.statuses.${currentOrder.status.toLowerCase()}.header_desc`, { defaultValue: 'Your order status has changed.' }),
+      });
+    }
+  }, [currentOrder?.status]);
 
   const handleSupport = () => {
     Linking.openURL("tel:+1234567890");
   };
 
-  // Fetch order with joined orderItems and restaurant details
-  useEffect(() => {
-    const fetchOrder = async () => {
-      const { data, error } = await supabase
-        .from("Order")
-        .select(`
-          id,
-          "userId",
-          status,
-          "totalAmount",
-          "deliveryAddress",
-          "driverId",
-          "assignedAt",
-          "pickedUpAt",
-          "deliveredAt",
-          "estimatedTime",
-          "actualTime",
-          "driverRating",
-          "createdAt",
-          "updatedAt",
-          orderItems:OrderItem(
-             id,
-             "orderId",
-             "menuItemId",
-             quantity,
-             options,
-             price,
-             name,
-             "createdAt",
-             "updatedAt"
-          ),
-          restaurant:Restaurant(
-             id,
-             name
-          )
-        `)
-        .eq("id", order.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Error fetching order:", error);
-        Alert.alert("Error", "Failed to load order");
-      } else if (data) {
-        // Ensure orderItems is an array
-        setCurrentOrder({ ...data, orderItems: data.orderItems || [] });
-      }
-      setLoading(false);
-    };
-
-    fetchOrder();
-  }, [order.id]);
-
-  // Realtime subscription for updates
-  useEffect(() => {
-    const channel = supabase
-      .channel("schema-db-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "Order",
-          filter: `id=eq.${order.id}`,
-        },
-        (payload) => {
-          setCurrentOrder((prev) => ({
-            ...prev,
-            ...((payload.new as Order) || {}),
-            orderItems: ((payload.new as Order)?.orderItems) || prev.orderItems || [],
-          }));
-          setLastUpdated(new Date());
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [order.id]);
-
-  if (loading) {
+  if (loading && !currentOrder.id) {
     return (
       <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color="#FF4B2B" />
+        <ActivityIndicator size="large" color={BrandColors.primary} />
       </View>
     );
   }
 
+  const parsedAddress = (() => {
+    try {
+      const addr = JSON.parse(currentOrder.deliveryAddress);
+      return {
+        main: addr.street_address || addr.street || t('orders.details.no_address'),
+        sub: `${addr.city}, ${addr.state} ${addr.zipCode || addr.postal_code || ''}`.trim()
+      };
+    } catch {
+      return { main: currentOrder.deliveryAddress, sub: "" };
+    }
+  })();
+
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.orderId}>Order #{currentOrder.id.slice(-6)}</Text>
-          <Text style={styles.orderDate}>{formatDate(currentOrder.createdAt)}</Text>
-        </View>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(currentOrder.status) }]}>
-          <Text style={styles.statusText}>{formatStatus(currentOrder.status)}</Text>
-        </View>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      {/* Custom Header */}
+      <View style={styles.headerContainer}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="#111827" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{t('orders.details.title')} #{currentOrder.id.slice(-5).toUpperCase()}</Text>
       </View>
 
-      <View style={styles.progressSection}>
-        <CircularProgress
-          progress={computedProgress}
-          size={120}
-          strokeWidth={10}
-          color={progressColor}
-        />
-        <Text style={styles.statusLabel}>{formatStatus(currentOrder.status)}</Text>
-      </View>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Status Illustration Card */}
+        <View style={styles.statusSummaryCard}>
+          <View style={styles.statusIconCircle}>
+            <Ionicons name={getStatusIllustration(currentOrder?.status || "PENDING") as any} size={48} color={BrandColors.primary} />
+          </View>
+          <Text style={styles.statusMainTitle}>{t(`orders.statuses.${(currentOrder?.status || "PENDING").toLowerCase()}.header_title` as any)}</Text>
+          <Text style={styles.statusSubtitle}>{t(`orders.statuses.${(currentOrder?.status || "PENDING").toLowerCase()}.header_desc` as any)}</Text>
+        </View>
 
-      <View style={styles.timeline}>
-        {getStatusSteps().map((step) => (
-          <View key={step.status} style={styles.timelineItem}>
-            <View style={styles.timelineLeft}>
-              <View
-                style={[
-                  styles.timelineDot,
-                  step.isCurrent && styles.timelineDotActive,
-                  step.isCompleted && styles.timelineDotCompleted,
-                ]}
-              >
-                <Ionicons name={step.icon as any} size={16} color="#fff" />
+        {/* Arrival Card */}
+        <TouchableOpacity 
+          activeOpacity={0.9} 
+          style={styles.arrivalCard}
+          onPress={() => setShowReceipt(!showReceipt)}
+        >
+          <LinearGradient
+            colors={[BrandColors.primary, BrandColors.secondary]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.arrivalGradient}
+          >
+            <Text style={styles.arrivalLabel}>{t('orders.details.estimated_delivery')}</Text>
+            <Text style={styles.arrivalTime}>
+              {restaurantDetails?.deliveryTime || currentOrder.estimatedTime || 30} {t('common.min')}
+            </Text>
+            <View style={styles.viewReceiptButton}>
+              <Text style={styles.viewReceiptText}>{showReceipt ? t('orders.details.hide_details') : t('orders.details.view_order_details')}</Text>
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* Receipt Details (Collapsible) */}
+        {showReceipt && (
+          <View style={styles.receiptSection}>
+            {(currentOrder.orderItems || []).map((item, idx) => (
+              <View key={idx} style={styles.receiptItem}>
+                <Text style={styles.receiptItemName}>{item.quantity}x {item.name}</Text>
+                <Text style={styles.receiptItemPrice}>{formatPrice(item.price * item.quantity, currentOrder.restaurant?.currency)}</Text>
               </View>
-              <View style={[styles.timelineLine, step.isCompleted && styles.timelineLineCompleted]} />
-            </View>
-            <Text style={[styles.timelineLabel, step.isCurrent && styles.timelineLabelActive]}>
-              {step.label}
-            </Text>
-          </View>
-        ))}
-      </View>
+            ))}
+            
+            <View style={styles.receiptDivider} />
 
-      {/* Restaurant and Delivery Address */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Restaurant</Text>
-        <View style={styles.restaurantInfo}>
-          <Ionicons name="restaurant-outline" size={24} color="#4B5563" />
-          <Text style={styles.restaurantName}>
-            {currentOrder.restaurant ? currentOrder.restaurant.name : "Restaurant"}
-          </Text>
-        </View>
-      </View>
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Delivery Address</Text>
-        <View style={styles.addressContainer}>
-          <Ionicons name="location-outline" size={24} color="#4B5563" />
-          <Text style={styles.address}>
-            {currentOrder.deliveryAddress
-              ? (() => {
-                  try {
-                    const address = JSON.parse(currentOrder.deliveryAddress);
-                    return `${address.label} - ${address.street_address}, ${address.city}, ${address.state}`;
-                  } catch {
-                    return currentOrder.deliveryAddress;
-                  }
-                })()
-              : "No address provided"}
-          </Text>
-        </View>
-      </View>
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Order Items</Text>
-        {(currentOrder.orderItems || []).map((item, index) => (
-          <View key={index} style={styles.orderItem}>
-            <View style={styles.orderItemInfo}>
-              <Text style={styles.orderItemQuantity}>{item.quantity}x</Text>
-              <Text style={styles.orderItemName}>{item.name}</Text>
-            </View>
-            <Text style={styles.orderItemPrice}>
-              ${(item.price * item.quantity).toFixed(2)}
-            </Text>
-          </View>
-        ))}
-        <View style={styles.totalContainer}>
-          <Text style={styles.totalLabel}>Total Amount</Text>
-          <Text style={styles.totalAmount}>
-            ${currentOrder.totalAmount.toFixed(2)}
-          </Text>
-        </View>
-      </View>
+            {/* Preparation Time */}
+            {!!restaurantDetails?.preparationTime && (
+              <View style={styles.receiptItem}>
+                <Text style={styles.receiptItemName}>{t('orders.details.prep_time', { defaultValue: 'Preparation Time' })}</Text>
+                <Text style={styles.receiptItemPrice}>{restaurantDetails.preparationTime} {t('common.min')}</Text>
+              </View>
+            )}
 
-      <TouchableOpacity style={styles.supportButton} onPress={handleSupport}>
-        <Ionicons name="call-outline" size={24} color="#FF4B2B" />
-        <Text style={styles.supportButtonText}>Contact Support</Text>
-      </TouchableOpacity>
-    </ScrollView>
+            {/* Delivery Fee */}
+            <View style={styles.receiptItem}>
+              <Text style={styles.receiptItemName}>{t('orders.details.delivery_fee', { defaultValue: 'Delivery Fee' })}</Text>
+              <Text style={styles.receiptItemPrice}>
+                {formatPrice(restaurantDetails?.deliveryCharges || 0, currentOrder.restaurant?.currency)}
+              </Text>
+            </View>
+
+            {/* Tax */}
+            {!!(currentOrder.posOrder?.taxAmount || (restaurantDetails?.taxRate && restaurantDetails.taxRate > 0)) && (
+              <View style={styles.receiptItem}>
+                <Text style={styles.receiptItemName}>
+                  {t('orders.details.tax', { defaultValue: 'Tax' })}
+                  {restaurantDetails?.isTaxIncluded ? ` (${t('orders.details.included', { defaultValue: 'Included' })})` : ''}
+                </Text>
+                <Text style={styles.receiptItemPrice}>
+                  {formatPrice(currentOrder.posOrder?.taxAmount || 0, currentOrder.restaurant?.currency)}
+                </Text>
+              </View>
+            )}
+
+            {/* Discount */}
+            {!!(currentOrder.posOrder?.discountAmount && currentOrder.posOrder.discountAmount > 0) && (
+              <View style={styles.receiptItem}>
+                <Text style={[styles.receiptItemName, { color: '#10B981' }]}>{t('orders.details.discount', { defaultValue: 'Discount' })}</Text>
+                <Text style={[styles.receiptItemPrice, { color: '#10B981' }]}>
+                  -{formatPrice(currentOrder.posOrder.discountAmount, currentOrder.restaurant?.currency)}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.receiptDivider} />
+            <View style={styles.receiptTotalRow}>
+              <Text style={styles.receiptTotalLabel}>{t('orders.details.total_amount')}</Text>
+              <Text style={styles.receiptTotalValue}>{formatPrice(currentOrder.totalAmount, currentOrder.restaurant?.currency)}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Restaurant Details */}
+        <View style={styles.entityCard}>
+          <Image 
+            source={{ uri: restaurantDetails?.coverImage || 'https://via.placeholder.com/150' }} 
+            style={styles.restaurantImage} 
+          />
+          <View style={styles.entityInfo}>
+            <Text style={styles.entityName}>{currentOrder.restaurant?.name}</Text>
+            <Text style={styles.entitySub}>{restaurantDetails?.cuisineType || t('orders.restaurant_fallback')} • {restaurantDetails?.rating || '5.0'} ★</Text>
+          </View>
+          <TouchableOpacity style={styles.callButton} onPress={() => Linking.openURL('tel:123')}>
+            <Ionicons name="call" size={20} color={BrandColors.primary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Delivery Address */}
+        <View style={styles.entityCard}>
+          <View style={styles.addressIconBox}>
+            <Ionicons name="location" size={20} color="#D97706" />
+          </View>
+          <View style={styles.entityInfo}>
+            <Text style={styles.entityLabel}>{t('orders.details.delivery_address')}</Text>
+            <Text style={styles.entityName}>{parsedAddress.main}</Text>
+            {parsedAddress.sub ? <Text style={styles.entitySub}>{parsedAddress.sub}</Text> : null}
+          </View>
+        </View>
+
+        {/* Live Tracking Timeline */}
+        <View style={styles.trackingCard}>
+          <Text style={styles.trackingTitle}>{t('orders.statuses.out_for_delivery.bottom_subtitle').split('.')[0]}</Text>
+          
+          {trackingSteps.map((step, index) => {
+            const isCompleted = index <= currentStepIndex;
+            const isCurrent = index === currentStepIndex;
+            const isLast = index === trackingSteps.length - 1;
+
+            return (
+              <View key={index} style={styles.timelineItem}>
+                <View style={styles.timelineLeft}>
+                  <View style={[
+                    styles.timelineIconCircle,
+                    isCompleted && styles.timelineIconCircleActive
+                  ]}>
+                    <Ionicons 
+                      name={step.icon as any} 
+                      size={18} 
+                      color={isCompleted ? "#fff" : "#9CA3AF"} 
+                    />
+                  </View>
+                  {!isLast && (
+                    <View style={[
+                      styles.timelineLine,
+                      isCompleted && index < currentStepIndex && styles.timelineLineActive
+                    ]} />
+                  )}
+                </View>
+                <View style={styles.timelineContent}>
+                  <Text style={[
+                    styles.timelineStatusName,
+                    isCompleted && styles.timelineStatusNameActive
+                  ]}>
+                    {step.title}
+                  </Text>
+                  {isCurrent && (
+                    <Text style={styles.timelineStatusDesc}>{step.desc}</Text>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          <TouchableOpacity style={styles.helpButton} onPress={handleSupport}>
+            <Ionicons name="headset-outline" size={20} color="#1F2937" />
+            <Text style={styles.helpButtonText}>{t('orders.details.contact_support')}</Text>
+          </TouchableOpacity>
+        </View>
+
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-  section: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 12,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#EAEAEA",
-  },
-  orderId: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1A1A1A",
-  },
-  orderDate: {
-    fontSize: 14,
-    color: "#666666",
-    marginTop: 4,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  statusText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  progressSection: {
-    padding: 24,
-    alignItems: "center",
-  },
-  statusLabel: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#4A90E2",
-    marginTop: 12,
-    textTransform: "uppercase",
-  },
-  timeline: {
-    paddingHorizontal: 24,
-    paddingTop: 8,
-  },
-  timelineItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 5,
-  },
-  timelineLeft: {
-    alignItems: "center",
-    marginRight: 16,
-  },
-  timelineDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#F3F4F6",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  timelineDotActive: {
-    backgroundColor: "#FF4B2B",
-  },
-  timelineDotCompleted: {
-    backgroundColor: "#10B981",
-  },
-  timelineLine: {
-    width: 2,
-    height: 40,
-    backgroundColor: "#EAEAEA",
-  },
-  timelineLineCompleted: {
-    backgroundColor: "#10B981",
-  },
-  timelineLabel: {
-    fontSize: 14,
-    color: "#666666",
-    marginTop: 6,
-  },
-  updateText: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginTop: 4,
-  },
-  timelineLabelActive: {
-    color: "#1A1A1A",
-    fontWeight: "500",
-  },
-  restaurantInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  restaurantName: {
-    fontSize: 16,
-    color: "#4B5563",
-    marginLeft: 8,
-  },
-  addressContainer: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  address: {
-    flex: 1,
-    fontSize: 16,
-    color: "#4B5563",
-    marginLeft: 8,
-  },
-  orderItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  orderItemInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  orderItemQuantity: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#FF4B2B",
-    marginRight: 8,
-  },
-  orderItemName: {
-    fontSize: 16,
-    color: "#4B5563",
-  },
-  orderItemPrice: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-  },
-  totalContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-  },
-  totalLabel: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-  },
-  totalAmount: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#FF4B2B",
-  },
-  supportButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
-    marginHorizontal: 16,
-    marginVertical: 24,
-    backgroundColor: "#FFF1F0",
-    borderRadius: 12,
-  },
-  supportButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#FF4B2B",
-    marginLeft: 8,
-  },
-});
 export default OrderDetailsScreen;

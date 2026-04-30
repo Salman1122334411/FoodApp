@@ -2,33 +2,68 @@
   "expo": {
     "name": "mobile",
     "slug": "mobile",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "scheme": "fiestaa",
     "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "image": "./assets/fiestaa-logo.png",
+      "backgroundColor": "#ffffff",
+      "resizeMode": "contain"
     },
     "ios": {
-      "supportsTablet": true,
-      "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "This app needs access to your location to show nearby restaurants and delivery options."
+      "splash": {
+        "image": "./assets/fiestaa-logo.png",
+        "backgroundColor": "#ffffff",
+        "resizeMode": "contain"
       }
     },
     "android": {
+      "package": "com.anonymous.mobile",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
+      "splash": {
+        "image": "./assets/fiestaa-logo.png",
         "backgroundColor": "#ffffff",
-       // "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
-      }
+        "resizeMode": "contain"
+      },
+      "softwareKeyboardLayoutMode": "pan",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "fiestaa",
+              "host": "auth",
+              "pathPrefix": "/callback"
+            },
+            {
+              "scheme": "fiestaa"
+            }
+          ],
+          "category": [
+            "DEFAULT",
+            "BROWSABLE"
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
       "dangerous": {
         "disableCoop": true
+      }
+    },
+    "extra": {
+      "auth": {
+        "googleClientId": "601001909197-a7i7qjqvd5aimtojh9lub8vvafer2v0u.apps.googleusercontent.com"
+      },
+      "eas": {
+        "projectId": "d9ecc209-609f-4f51-a8e7-9b100300d100"
       }
     }
   }

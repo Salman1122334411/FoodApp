@@ -1,0 +1,14 @@
+[
+  {
+    "id": "c3b88b9a-4d81-413f-84d3-55bcce3859d9",
+    "email": "democustomer@gmail.com",
+    "name": "Demo Customer",
+    "role": "CUSTOMER",
+    "approvalStatus": null,
+    "createdAt": "2026-03-09T11:15:19.109",
+    "updatedAt": "2026-03-09T11:17:32.774",
+    "phoneNumber": "03222616415",
+    "dob": "2026-03-09T11:14:31.155",
+    "provider": "email"
+  }
+]

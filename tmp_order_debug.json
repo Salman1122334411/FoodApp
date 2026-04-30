@@ -1,0 +1,38 @@
+{
+  "id": "cmmj3qep300003c7n1rgwpi4d",
+  "userId": "c3b88b9a-4d81-413f-84d3-55bcce3859d9",
+  "restaurantId": "cmkgns0w50001td5s9lo9gg46",
+  "status": "PENDING",
+  "totalAmount": 3602.99,
+  "deliveryAddress": "Abid Majeed Road (Featherston Road), Punjab, Pakistan, 54000",
+  "driverId": null,
+  "pickupLat": null,
+  "pickupLng": null,
+  "dropoffLat": null,
+  "dropoffLng": null,
+  "assignedAt": null,
+  "pickedUpAt": null,
+  "deliveredAt": null,
+  "estimatedTime": null,
+  "actualTime": null,
+  "driverRating": null,
+  "createdAt": "2026-03-09T11:32:30.781",
+  "updatedAt": "2026-03-09T11:32:29.799",
+  "specialInstructions": null,
+  "paymentMethod": "cod",
+  "orderType": "DELIVERY",
+  "phoneNumber": null,
+  "orderItems": [
+    {
+      "id": "cmmj3qgcj00013c7nv8d5zqxb",
+      "name": "Malai Botti Pizza",
+      "price": 1200,
+      "options": null,
+      "orderId": "cmmj3qep300003c7n1rgwpi4d",
+      "quantity": 3,
+      "createdAt": "2026-03-09T11:32:32.816",
+      "updatedAt": "2026-03-09T11:32:29.799",
+      "menuItemId": "cmkgns0w50002td5swhfakaks"
+    }
+  ]
+}

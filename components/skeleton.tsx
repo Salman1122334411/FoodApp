@@ -15,7 +15,7 @@ const { width } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.7;
 
 // Create a reusable skeleton component with shimmer effect
-const SkeletonPlaceholder = ({ width, height, style }) => {
+const SkeletonPlaceholder = ({ width, height, style }: { width: any, height: any, style?: any }) => {
   const animatedValue = React.useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
@@ -42,6 +42,8 @@ const SkeletonPlaceholder = ({ width, height, style }) => {
           backgroundColor: "#E8E8E8",
           borderRadius: 4,
           overflow: "hidden",
+          // @ts-ignore
+          boxShadow: "0px 2px 4px rgba(0, 0, 0, 0.1)",
         },
         style,
       ]}
@@ -73,7 +75,7 @@ export function HomeScreenSkeleton() {
           <View>
             {/* Username Skeleton */}
             <SkeletonPlaceholder width={180} height={28} style={styles.greeting} />
-            
+
             {/* Location Button Skeleton */}
             <View style={styles.locationButton}>
               <Ionicons name="location-outline" size={20} color="#E8E8E8" />
@@ -117,7 +119,7 @@ export function HomeScreenSkeleton() {
                 <View style={styles.dishInfo}>
                   <SkeletonPlaceholder width={120} height={16} style={{ marginBottom: 8 }} />
                   <SkeletonPlaceholder width={100} height={14} style={{ marginBottom: 8 }} />
-                  <SkeletonPlaceholder width={60} height={16} />
+                  <SkeletonPlaceholder width={60} height={16} style={{}} />
                 </View>
               </View>
             ))}
@@ -127,39 +129,39 @@ export function HomeScreenSkeleton() {
         {/* Nearby Restaurants Skeleton */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <SkeletonPlaceholder width={180} height={24} />
-            <SkeletonPlaceholder width={60} height={16} />
+            <SkeletonPlaceholder width={180} height={24} style={{}} />
+            <SkeletonPlaceholder width={60} height={16} style={{}} />
           </View>
-          
+
           {/* Restaurant Cards Skeleton */}
           {[1, 2, 3].map((item) => (
             <View key={item} style={styles.restaurantCardSkeleton}>
-              <SkeletonPlaceholder 
-                width="100%" 
-                height={200} 
-                style={{ borderTopLeftRadius: 16, borderTopRightRadius: 16 }} 
+              <SkeletonPlaceholder
+                width="100%"
+                height={200}
+                style={{ borderTopLeftRadius: 16, borderTopRightRadius: 16 }}
               />
-              
+
               {/* Delivery Time Chip Skeleton */}
               <View style={[styles.deliveryTimeChip, styles.deliveryTimeChipSkeleton]}>
                 <SkeletonPlaceholder width={80} height={20} style={{ borderRadius: 20 }} />
               </View>
-              
+
               <View style={styles.restaurantInfo}>
                 <View style={styles.restaurantHeader}>
                   <View>
                     <SkeletonPlaceholder width={150} height={18} style={{ marginBottom: 8 }} />
-                    <SkeletonPlaceholder width={120} height={14} />
+                    <SkeletonPlaceholder width={120} height={14} style={{}} />
                   </View>
                   <SkeletonPlaceholder width={50} height={24} style={{ borderRadius: 8 }} />
                 </View>
-                
+
                 <View style={styles.restaurantMeta}>
                   <View style={styles.metaItem}>
-                    <SkeletonPlaceholder width={100} height={14} />
+                    <SkeletonPlaceholder width={100} height={14} style={{}} />
                   </View>
                   <View style={styles.metaItem}>
-                    <SkeletonPlaceholder width={80} height={14} />
+                    <SkeletonPlaceholder width={80} height={14} style={{}} />
                   </View>
                 </View>
               </View>
@@ -232,10 +234,8 @@ const styles = StyleSheet.create({
     marginRight: 16,
     backgroundColor: "#fff",
     borderRadius: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    // @ts-ignore
+    boxShadow: "0px 2px 4px rgba(0, 0, 0, 0.1)",
     elevation: 3,
     overflow: "hidden",
   },
@@ -246,10 +246,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 16,
     marginBottom: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    // @ts-ignore
+    boxShadow: "0px 2px 4px rgba(0, 0, 0, 0.1)",
     elevation: 3,
     position: "relative",
     overflow: "hidden",

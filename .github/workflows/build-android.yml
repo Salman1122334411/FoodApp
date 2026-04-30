@@ -1,0 +1,92 @@
+name: Build & Release Android APK
+
+# Trigger on:
+#   1) Push to main branch  → auto-build + create a pre-release
+#   2) Push a version tag (e.g. v1.2.3) → create a full release
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build APK on EAS
+        id: eas_build
+        run: |
+          BUILD_URL=$(eas build --platform android --profile preview2 --non-interactive --json | jq -r '.[0].artifacts.buildUrl')
+          echo "build_url=$BUILD_URL" >> $GITHUB_OUTPUT
+
+      - name: Download APK
+        run: |
+          curl -L "${{ steps.eas_build.outputs.build_url }}" -o app-release.apk
+
+      - name: Get version from app.json
+        id: version
+        run: echo "version=$(node -p "require('./app.json').expo.version")" >> $GITHUB_OUTPUT
+
+      - name: Determine if this is a tagged release
+        id: release_type
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "is_tag=true" >> $GITHUB_OUTPUT
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "is_tag=false" >> $GITHUB_OUTPUT
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+            echo "tag=v${{ steps.version.outputs.version }}-build.${{ github.run_number }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_type.outputs.tag }}
+          name: >-
+            ${{ steps.release_type.outputs.is_tag == 'true'
+              && format('🚀 Release {0}', steps.release_type.outputs.tag)
+              || format('🔨 Dev Build v{0} #{1}', steps.version.outputs.version, github.run_number) }}
+          body: |
+            ## ${{ steps.release_type.outputs.is_tag == 'true' && '🚀 Production Release' || '🔨 Development Build' }}
+
+            | Field | Value |
+            |-------|-------|
+            | **App Version** | `v${{ steps.version.outputs.version }}` |
+            | **Build #** | `${{ github.run_number }}` |
+            | **Commit** | [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) |
+            | **Branch** | `${{ github.ref_name }}` |
+
+            ### Changes
+            ${{ github.event.head_commit.message }}
+
+            ---
+            📲 Download `app-release.apk` below to install on Android.
+          files: app-release.apk
+          draft: false
+          prerelease: ${{ steps.release_type.outputs.prerelease }}
+          make_latest: ${{ steps.release_type.outputs.is_tag }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

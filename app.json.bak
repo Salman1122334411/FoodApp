@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "mobile",
+    "slug": "mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "This app needs access to your location to show nearby restaurants and delivery options."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.anonymous.mobile"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "dangerous": {
+        "disableCoop": true
+      }
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "ios": {
+            "locationWhenInUseUsageDescription": "This app needs access to your location to show nearby restaurants and delivery options."
+          }
+        }
+      ],
+      "expo-auth-session",
+      "expo-dev-client"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "18a60516-7dbe-42c9-b169-0b4a55260015"
+      },
+      "auth": {
+        "googleClientId": "273791797910-alhj52c7e95c5b60445dfh58dei4asnm.apps.googleusercontent.com"
+      }
+    }
+  }
+}
